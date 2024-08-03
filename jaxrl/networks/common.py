@@ -62,6 +62,8 @@ def filter_theta(path, _):
     for i in range(10):
         if f'backbones_{i}' in path:
             return 'frozen'
+        if f'random_backbones_{i}' in path:
+            return 'frozen'
     if 'mean_layer' in path:
         return 'frozen'
     elif 'log_std_layer' in path:
