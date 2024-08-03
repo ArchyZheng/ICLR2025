@@ -202,6 +202,9 @@ class MetaPolicy(nn.Module):
             for hidn in self.hidden_dims]
         self.embeds_bb = [nn.Embed(self.task_num, hidn, embedding_init=default_init()) \
             for hidn in self.hidden_dims]
+        self.random_embeds_bb = [nn.Embed(self.task_num, hidn, embedding_init=default_init()) \
+            for hidn in self.hidden_dims]
+        
         
         self.mean_layer = nn.Dense(
             self.action_dim, 
@@ -233,7 +236,10 @@ class MetaPolicy(nn.Module):
             x = layer(x)
             # straight-through estimator
             phi_l = ste_step_fn(self.embeds_bb[i](t))
+            phi_l_random = ste_step_fn(self.random_embeds_bb[i](t))
             mask_l = jnp.broadcast_to(phi_l, x.shape)
+            mask_l_random = jnp.broadcast_to(phi_l_random, x.shape)
+            mask_l = jnp.maximum(mask_l, mask_l_random)
             masks[layer.name] = mask_l
             # masking outputs
             x *= mask_l

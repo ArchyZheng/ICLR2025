@@ -415,12 +415,13 @@ def _update_cotasp_jit(rng: PRNGKey, task_id: int, tau: float, discount: float,
     )
 
     # optimizing either alpha or theta
-    new_rng, new_actor, actor_info = jax.lax.cond(
-        optimize_alpha,
-        _update_alpha,
-        _update_theta,
-        new_rng, task_id, param_mask, actor, new_critic, temp, batch
-    )
+    # new_rng, new_actor, actor_info = jax.lax.cond(
+    #     optimize_alpha,
+    #     _update_alpha,
+    #     _update_theta,
+    #     new_rng, task_id, param_mask, actor, new_critic, temp, batch
+    # )
+    new_rng, new_actor, actor_info = _update_theta(new_rng, task_id, param_mask, actor, new_critic, temp, batch)
 
     # updating temperature coefficient
     new_temp, temp_info = _update_temp(

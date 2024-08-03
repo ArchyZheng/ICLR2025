@@ -74,6 +74,8 @@ def filter_alpha(path, _):
     for i in range(10):
         if f'embeds_bb_{i}' in path:
             return 'frozen'
+        if f'random_embeds_bb_{i}' in path:
+            return 'frozen'
     return 'trainable'
 
 
@@ -128,7 +130,7 @@ def _compute_fans(shape,
 
 def reset_model(main_cls, model_cls, configs: dict, inputs: list):
     model = model_cls(**configs)
-    _, new_params = model.init(*inputs).pop('params')
+    new_params = model.init(*inputs).pop('params')
     return main_cls.update_params(new_params)
 
 

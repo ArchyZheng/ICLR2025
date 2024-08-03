@@ -16,32 +16,33 @@ from jaxrl.datasets import ReplayBuffer
 from jaxrl.evaluation import evaluate_cl
 from jaxrl.utils import Logger
 from jaxrl.agents.sac.sac_learner import CoTASPLearner
+from jaxrl.agents.sac.sac_mask_combination import MaskCombinationLearner
 from continual_world import TASK_SEQS, get_single_env
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('env_name', 'cw20', 'Environment name.')
+flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
 flags.DEFINE_integer('seed', 110, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
 flags.DEFINE_string('env_type', 'random_init_all', 'The type of env is either deterministic or random_init_all')
 flags.DEFINE_boolean('normalize_reward', True, 'Normalize rewards')
-flags.DEFINE_integer('eval_episodes', 10, 'Number of episodes used for evaluation.')
-flags.DEFINE_integer('log_interval', 200, 'Logging interval.')
-flags.DEFINE_integer('eval_interval', 20000, 'Eval interval.')
+flags.DEFINE_integer('eval_episodes', 1, 'Number of episodes used for evaluation.')
+flags.DEFINE_integer('log_interval', 1, 'Logging interval.')
+flags.DEFINE_integer('eval_interval', 200000, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updating per # environment steps.')
 flags.DEFINE_integer('buffer_size', int(1e6), 'Size of replay buffer')
-flags.DEFINE_integer('max_step', int(1e6), 'Number of training steps for each task')
-flags.DEFINE_integer('start_training', int(1e4), 'Number of training steps to start training.')
-flags.DEFINE_integer('theta_step', int(990), 'Number of training steps for theta.')
-flags.DEFINE_integer('alpha_step', int(10), 'Number of finetune steps for alpha.')
+flags.DEFINE_integer('max_step', int(30), 'Number of training steps for each task')
+flags.DEFINE_integer('start_training', int(0), 'Number of training steps to start training.')
+flags.DEFINE_integer('theta_step', int(1), 'Number of training steps for theta.')
+flags.DEFINE_integer('alpha_step', int(0), 'Number of finetune steps for alpha.')
 
-flags.DEFINE_boolean('rnd_explore', True, 'random policy distillation')
+flags.DEFINE_boolean('rnd_explore', False, 'random policy distillation')
 flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "CoTASP_Testing", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "OUR_METHOD_AAAI", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', False, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '/home/yijunyan/Data/PyCode/CoTASP/logs', 'Logging dir.')
@@ -90,11 +91,14 @@ def main(_):
     random.seed(FLAGS.seed)
 
     # initialize SAC agent
+    algo_kwargs['update_coef'] = False
+    algo_kwargs['update_dict'] = False
     temp_env = get_single_env(
         TASK_SEQS[FLAGS.env_name][0]['task'], FLAGS.seed, 
         randomization=FLAGS.env_type)
     if algo == 'cotasp':
-        agent = CoTASPLearner(
+        # agent = CoTASPLearner(
+        agent = MaskCombinationLearner(
             FLAGS.seed,
             temp_env.observation_space.sample()[np.newaxis],
             temp_env.action_space.sample()[np.newaxis], 

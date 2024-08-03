@@ -19,9 +19,15 @@ critic_configs:
   name_activation: leaky_relu
   use_layer_norm: true
 # dictionaries
-update_coef: true
-update_dict: true
-dict_configs:
+update_coef: false
+update_dict: false
+dict_configs_random:
+  alpha: 0.001
+  c: 1.0
+  method: lasso_lars
+  positive_code: false
+  scale_code: false
+dict_configs_fixed:
   alpha: 0.001
   c: 1.0
   method: lasso_lars
