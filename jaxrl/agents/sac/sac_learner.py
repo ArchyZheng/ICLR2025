@@ -91,7 +91,7 @@ class SACLearner(object):
 
         actor_configs['action_dim'] = action_dim
         actor_def = policies.NormalTanhPolicy(**actor_configs)
-        _, actor_params = actor_def.init(actor_key, observations).pop('params')
+        actor_params = actor_def.init(actor_key, observations).pop('params')
         actor = TrainState.create(
             apply_fn=actor_def.apply,
             params=actor_params,
@@ -99,7 +99,7 @@ class SACLearner(object):
         )
 
         critic_def = critic_net.DoubleCritic(**critic_configs)
-        _, critic_params = critic_def.init(
+        critic_params = critic_def.init(
             critic_key, observations, actions
         ).pop('params')
         critic = TrainState.create(
@@ -109,7 +109,7 @@ class SACLearner(object):
         )
 
         tc_def = critic_net.DoubleCritic(**critic_configs)
-        _, tc_params = tc_def.init(
+        tc_params = tc_def.init(
             critic_key, observations, actions
         ).pop('params')
         target_critic = TrainState.create(
@@ -119,7 +119,7 @@ class SACLearner(object):
         )
 
         temp_def = temperature.Temperature(init_temperature)
-        _, temp_params = temp_def.init(temp_key).pop('params')
+        temp_params = temp_def.init(temp_key).pop('params')
         temp = TrainState.create(
             apply_fn=temp_def.apply,
             params=temp_params,
@@ -466,7 +466,7 @@ class CoTASPLearner(SACLearner):
         actor_configs['task_num'] = task_num
         actor_configs['action_dim'] = action_dim
         actor_def = policies.MetaPolicy(**actor_configs)
-        _, actor_params = actor_def.init(actor_key, observations, jnp.array([0])).pop('params')
+        actor_params = FrozenDict(actor_def.init(actor_key, observations, jnp.array([0])).pop('params'))
         actor = MPNTrainState.create(
             apply_fn=actor_def.apply,
             params=actor_params,
