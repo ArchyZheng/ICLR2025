@@ -19,7 +19,7 @@ from jaxrl.agents.sac.sac_learner import CoTASPLearner
 from continual_world import TASK_SEQS, get_single_env
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('env_name', 'cw20', 'Environment name.')
+flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
 flags.DEFINE_integer('seed', 110, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
@@ -41,7 +41,7 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "CoTASP_Testing", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "MASK_COMBINATION", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', False, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '/home/yijunyan/Data/PyCode/CoTASP/logs', 'Logging dir.')
