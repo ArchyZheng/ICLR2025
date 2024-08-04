@@ -25,7 +25,26 @@ from jaxrl.networks import critic_net, policies
 from jaxrl.networks.common import InfoDict, TrainState, PRNGKey, Params, \
     MPNTrainState
 from jaxrl.dict_learning.task_dict import OnlineDictLearnerV2
-
+def get_grad_masks(masks: dict, input_dim: int = 12):
+    grad_masks = {}
+    backbones = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
+    for i, layer in enumerate(backbones):
+        if i == 0:
+            post_m = masks[layer][0]
+            grad_masks[(layer, 'kernel')] = 1 - jnp.broadcast_to(
+                post_m, (input_dim, 1024)
+            )
+            grad_masks[(layer, 'bias')] = 1 - post_m.flatten()
+            pre_m = masks[layer][0]
+        else:
+            post_m = masks[layer][0]
+            grad_masks[(layer, 'kernel')] = 1 - jnp.minimum(
+                jnp.broadcast_to(pre_m.reshape(-1, 1), (1024, 1024)),
+                jnp.broadcast_to(post_m, (1024, 1024))
+            )
+            grad_masks[(layer, 'bias')] = 1 - post_m.flatten()
+            pre_m = masks[layer][0]
+    return grad_masks
 
 @jax.jit
 def _update_sac_jit(
@@ -55,7 +74,6 @@ def _update_sac_jit(
         **actor_info,
         **alpha_info
     }
-
 
 class SACLearner(object):
     def __init__(self,
@@ -266,9 +284,10 @@ def _update_theta(
     rng: PRNGKey, task_id: int, param_mask: FrozenDict[str, Any], 
     actor: MPNTrainState, critic: TrainState, temp: TrainState, 
     batch: Batch) -> Tuple[PRNGKey, MPNTrainState, InfoDict]:
-
+    # global cumul_trained_params_number
     rng, key = jax.random.split(rng)
     def actor_loss_fn(actor_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
+        global cumul_trained_params_number
         dist, dicts = actor.apply_fn(
             {'params': actor_params}, batch.observations, jnp.array([task_id])
         )
@@ -283,8 +302,26 @@ def _update_theta(
             'entropy': -log_probs.mean(),
             'means': dicts['means'].mean()
         }
+        active_feature_list = [12]
+        active_parameter = 0
+        overlap_parameter_number = 0
+        mask_grad_mask = get_grad_masks(dicts['masks'])
         for k in dicts['masks']:
-            _info[k+'_rate_act'] = jnp.mean(dicts['masks'][k])
+            rate = jnp.mean(dicts['masks'][k])
+            _info[k+'_rate_act'] = rate
+            active_feature = rate * 1024
+            active_parameter += active_feature_list[-1] * active_feature
+            active_feature_list.append(active_feature)
+            cumul_masked = param_mask[(k, 'kernel')]
+            overlap_parameter = 1 - jnp.maximum(cumul_masked, mask_grad_mask[(k, 'kernel')])
+            overlap_parameter_number += overlap_parameter.sum()
+        _info['active_parameter'] = active_parameter
+        _info['overlap_parameter_number'] = overlap_parameter_number/(12 * 1024 + 1024 * 1024 * 3)
+        _info['#overlap_parameter:#active_parameter'] = overlap_parameter_number/active_parameter
+        _info['free_parameter_number'] = (active_parameter - overlap_parameter_number)/(12 * 1024 + 1024 * 1024 * 3)
+        _info['#free_parameter:#active_parameter'] = 1- overlap_parameter_number/active_parameter
+        # _info['cumul_trained_params_number'] = cumul_trained_params_number/(12 * 1024 + 1024 * 1024 * 3)
+        # cumul_trained_params_number += _info['free_parameter_number']
 
         return actor_loss, _info
     
@@ -293,9 +330,24 @@ def _update_theta(
     # recording info
     g_norm = global_norm(grads_actor)
     actor_info['g_norm_actor'] = g_norm
+    coe_list = [12, 1024, 1024, 1024]
+    masked_parameter_number = 0
     for p, v in param_mask.items():
         if p[-1] == 'kernel':
-            actor_info['used_capacity_'+p[0]] = 1.0 - jnp.mean(v)
+            dummy_capacity = 1.0 - jnp.mean(v)
+            actor_info['used_capacity_'+p[0]] = dummy_capacity
+            if 'used_capacity_' + p[0] == 'used_capacity_backbones_0':
+                masked_parameter_number += coe_list[0] * dummy_capacity
+            if 'used_capacity_' + p[0] == 'used_capacity_backbones_1':
+                masked_parameter_number += coe_list[1] * dummy_capacity
+            if 'used_capacity_' + p[0] == 'used_capacity_backbones_2':
+                masked_parameter_number += coe_list[2] * dummy_capacity
+            if 'used_capacity_' + p[0] == 'used_capacity_backbones_3':
+                masked_parameter_number += coe_list[3] * dummy_capacity
+    actor_info['masked_parameter_number'] = masked_parameter_number/(12 + 3 * 1024)
+
+
+
 
     # Masking gradients according to cumulative binary masks
     unfrozen_grads = unfreeze(grads_actor)
@@ -516,6 +568,8 @@ class CoTASPLearner(SACLearner):
         self.target_update_period = target_update_period
         self.task_embeddings = []
         self.task_encoder = SentenceTransformer('all-MiniLM-L12-v2')
+        self.old_info = None
+        self.task_old_id = 0
 
     def start_task(self, task_id: int, description: str):
         task_e = self.task_encoder.encode(description)[np.newaxis, :]
@@ -554,7 +608,6 @@ class CoTASPLearner(SACLearner):
         return actions
 
     def update(self, task_id: int, batch: Batch, optimize_alpha: bool=False) -> InfoDict:
-
         if not self.update_coef:
             optimize_alpha = False
             
@@ -572,6 +625,16 @@ class CoTASPLearner(SACLearner):
         self.temp = new_temp  
         self.critic = new_critic
         self.target_critic = new_target_critic   
+        # if self.old_info == None and self.task_old_id == 0:
+        #     info['cumul_trained_params_number'] = 0
+        #     self.old_info = info
+        #     info['cumul_trained_params_rate'] = 0
+        # elif task_id != self.task_old_id:
+        #     cumul_trained_params_number = self.old_info['cumul_trained_params_number'] + info['free_parameter_number']
+        #     info['cumul_trained_params_number'] = cumul_trained_params_number
+        #     self.old_info = info
+        #     self.task_old_id = task_id
+        #     info['cumul_trained_params_rate'] = cumul_trained_params_number/(12 * 1024  + 1024 * 1024 * 3)
 
         return info
 

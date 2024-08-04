@@ -4,8 +4,11 @@ from jaxrl.agents.sac.sac_learner import CoTASPLearner
 # from sac_learner import CoTASPLearner
 from typing import Any
 import numpy as np
+from jaxrl.datasets.dataset import Batch
 from jaxrl.dict_learning.task_dict import OnlineDictLearnerV2
 from flax.core import freeze, unfreeze, FrozenDict
+
+from jaxrl.networks.common import InfoDict
 
 class RandomGenerateD(OnlineDictLearnerV2):
     pass
@@ -19,8 +22,6 @@ class MaskCombinationLearner(CoTASPLearner):
         self.dict4layers_random = {}
         self.actor_configs = actor_configs
         self.dict_configs_random = dict_configs_random
-        
-        
     
     def start_task(self, task_id: int, description: str):
         task_e = self.task_encoder.encode(description)[np.newaxis, :]
@@ -54,7 +55,3 @@ class MaskCombinationLearner(CoTASPLearner):
                 # Replace the i-th row
                 actor_params[k]['embedding'] = actor_params[k]['embedding'].at[task_id].set(alpha_l)
         self.actor = self.actor.update_params(freeze(actor_params))
-
-    
-    
-    
