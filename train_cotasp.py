@@ -16,7 +16,7 @@ from jaxrl.datasets import ReplayBuffer
 from jaxrl.evaluation import evaluate_cl
 from jaxrl.utils import Logger
 from jaxrl.agents.sac.sac_learner import CoTASPLearner
-from jaxrl.agents.sac.sac_mask_combination import MaskCombinationLearner
+from jaxrl.agents.sac.TARndMaskCombination import TARndMaskCombinationLearner
 from continual_world import TASK_SEQS, get_single_env
 
 FLAGS = flags.FLAGS
@@ -98,7 +98,7 @@ def main(_):
         randomization=FLAGS.env_type)
     if algo == 'cotasp':
         # agent = CoTASPLearner(
-        agent = MaskCombinationLearner(
+        agent = TARndMaskCombinationLearner(
             FLAGS.seed,
             temp_env.observation_space.sample()[np.newaxis],
             temp_env.action_space.sample()[np.newaxis], 
