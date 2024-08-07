@@ -62,17 +62,11 @@ class rnd_network(nn.Module):
             activation_fn('leaky_relu'),
             nn.Dense(features=64, name='output_fc2')])
         self.task_embedding_mask = jnp.ones((1, 4, 1024, 1))
-        self.task_embedding_results = []
 
     @nn.compact
     def __call__(self, 
-                 x: jnp.ndarray,
-                 task_id: jnp.ndarray):
-        if len(self.task_embedding_results) == task_id:
-            rnd_cnn_output = self.rnd_cnn.apply({'params': self.rnd_cnn_params}, self.task_embedding_mask)
-            self.task_embedding_results.append(rnd_cnn_output)
-        else:
-            rnd_cnn_output = self.task_embedding_results[task_id]
+                 x: jnp.ndarray):
+        rnd_cnn_output = self.rnd_cnn.apply({'params': self.rnd_cnn_params}, self.task_embedding_mask)
 
         rnd_cnn_output_reshaped = jnp.tile(rnd_cnn_output, (x.shape[0], 1))
         phi_next_st = self.mlp_obs(x)

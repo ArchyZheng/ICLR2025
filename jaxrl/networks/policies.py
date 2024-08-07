@@ -249,6 +249,7 @@ class MetaPolicy(nn.Module):
                 x = self.tanh(x)
             else:
                 x = self.activation(x)
+        encoder_output = x
         
         means = self.mean_layer(x)
 
@@ -275,10 +276,11 @@ class MetaPolicy(nn.Module):
                                    reinterpreted_batch_ndims=1), {
                                     'masks': masks, 
                                     'means': means, 
-                                    'stddev': jax.nn.softplus(log_stds)
+                                    'stddev': jax.nn.softplus(log_stds),
+                                    'encoder_output': encoder_output
                                    }
         else:
-            return base_dist, {'masks': masks, 'means': means, 'stddev': jax.nn.softplus(log_stds)}
+            return base_dist, {'masks': masks, 'means': means, 'stddev': jax.nn.softplus(log_stds), 'encoder_output': encoder_output}
 
     def get_grad_masks(self, masks: dict, input_dim: int = 12):
         grad_masks = {}
