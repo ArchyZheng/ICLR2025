@@ -1,7 +1,7 @@
 # TA-RND:
-ext_coeff: 1.0
+ext_coeff: 2.0
 int_coeff: 1.0
-rnd_rate: 1.0
+rnd_rate: 0.001
 # networks
 actor_configs:
   clip_mean: 1.0
@@ -32,7 +32,7 @@ dict_configs_random:
   positive_code: false
   scale_code: false
 dict_configs_fixed:
-  alpha: 0.001
+  alpha: 0.01
   c: 1.0
   method: lasso_lars
   positive_code: false
