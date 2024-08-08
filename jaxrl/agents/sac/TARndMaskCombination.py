@@ -67,7 +67,7 @@ def _update_theta(
         encoder_output = jax.lax.stop_gradient(encoder_output)
         decoder_input = jnp.concatenate([encoder_output, batch.actions], -1)
         predict_embedding = decoder.apply_fn({'params': decoder_params}, decoder_input)
-        target_embedding = rnd_net.apply_fn({'params': rnd_net.params}, batch.observations)
+        target_embedding = rnd_net.apply_fn({'params': rnd_net.params}, batch.next_observations)
         rnd_loss = jnp.mean(jnp.square(target_embedding - predict_embedding))
         # <<<<<<<<<<<<<<<< update decoder <<<<<<<<<<<<<<<<<<<<<<<
 
