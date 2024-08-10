@@ -42,7 +42,7 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "MASK_COMBINATION", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "Fine-Grained_HyperParameter_Search", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', False, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '/home/yijunyan/Data/PyCode/CoTASP/logs', 'Logging dir.')
@@ -62,7 +62,7 @@ def main(_):
     seq_tasks = TASK_SEQS[FLAGS.env_name]
     algo_kwargs = dict(FLAGS.config)
     algo = FLAGS.base_algo
-    run_name = f"{FLAGS.env_name}__{algo}__{FLAGS.seed}__{int(time.time())}"
+    run_name = f"{FLAGS.env_name}__{algo}__{FLAGS.seed}__fixed_lambda:{algo_kwargs['dict_configs_fixed']['alpha']}__random_lambda:{algo_kwargs['dict_configs_random']['alpha']}__{int(time.time())}"
 
     if FLAGS.save_checkpoint:
         save_policy_dir = f"logs/saved_actors/{run_name}.json"
