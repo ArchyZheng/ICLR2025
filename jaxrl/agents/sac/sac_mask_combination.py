@@ -34,10 +34,13 @@ class MaskCombinationLearner(CoTASPLearner):
                 alpha_l = jnp.asarray(alpha_l.flatten())
                 # Replace the i-th row
                 actor_params[k]['embedding'] = actor_params[k]['embedding'].at[task_id].set(alpha_l)
+        
+        lambda_list = [10e-1, 6e-1, 2e-1, 7e-2, 3e-2, 8e-3, 4e-3, 9e-4, 5e-4, 10e-5]
 
         
         actor_configs = self.actor_configs
         dict_configs = self.dict_configs_random
+        dict_configs['alpha'] = lambda_list[task_id]
         for id_layer, hidn in enumerate(actor_configs['hidden_dims']):
             dict_learner = OnlineDictLearnerV2(
                 384,
