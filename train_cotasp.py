@@ -28,7 +28,7 @@ flags.DEFINE_string('env_type', 'random_init_all', 'The type of env is either de
 flags.DEFINE_boolean('normalize_reward', True, 'Normalize rewards')
 flags.DEFINE_integer('eval_episodes', 10, 'Number of episodes used for evaluation.')
 flags.DEFINE_integer('log_interval', 200, 'Logging interval.')
-flags.DEFINE_integer('eval_interval', 20000, 'Eval interval.')
+flags.DEFINE_integer('eval_interval', 100000, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updating per # environment steps.')
 flags.DEFINE_integer('buffer_size', int(1e6), 'Size of replay buffer')
@@ -43,7 +43,11 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
+<<<<<<< HEAD
 flags.DEFINE_string('wandb_project_name', "check repeatness", "The wandb's project name.")
+=======
+flags.DEFINE_string('wandb_project_name', "FG-MASK + TA-RND", "The wandb's project name.")
+>>>>>>> 24afc2e (update TA-RND arch and implementation)
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', False, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '/home/yijunyan/Data/PyCode/CoTASP/logs', 'Logging dir.')
