@@ -19,6 +19,7 @@ class MaskCombinationLearner(CoTASPLearner):
         self.dict4layers_random = {}
         self.actor_configs = actor_configs
         self.dict_configs_random = dict_configs_random
+        self.if_use_flexiable_lambda = False
         
         
     
@@ -38,6 +39,11 @@ class MaskCombinationLearner(CoTASPLearner):
         
         actor_configs = self.actor_configs
         dict_configs = self.dict_configs_random
+        # >>>>>>>>>>>>>>> changed lambda >>>>>>>>>>>>>>>>
+        if self.if_use_flexiable_lambda:
+            lambda_list = [10e-1, 6e-1, 2e-1, 7e-2, 3e-2, 8e-3, 4e-3, 9e-4, 5e-4, 1e-4]
+            dict_configs['alpha'] = lambda_list[task_id]
+        # <<<<<<<<<<<<<<< changed lambda <<<<<<<<<<<<<<<<
         for id_layer, hidn in enumerate(actor_configs['hidden_dims']):
             dict_learner = OnlineDictLearnerV2(
                 384,
