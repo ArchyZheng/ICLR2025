@@ -227,6 +227,10 @@ class MetaPolicy(nn.Module):
         if self.use_layer_norm:
             self.masked_ln = MaskedLayerNorm(use_bias=False, use_scale=False)
 
+        mask = np.load('mask_npy/task_mask_8.npy')
+        self.mask = jnp.squeeze(mask)
+        self.mask = jnp.expand_dims(mask, axis=1)
+
     def __call__(self,
                  x: jnp.ndarray,
                  t: jnp.ndarray,
@@ -240,6 +244,7 @@ class MetaPolicy(nn.Module):
             mask_l = jnp.broadcast_to(phi_l, x.shape)
             mask_l_random = jnp.broadcast_to(phi_l_random, x.shape)
             mask_l = jnp.maximum(mask_l, mask_l_random)
+            mask_l = self.mask[i]
             masks[layer.name] = mask_l
             # masking outputs
             x *= mask_l

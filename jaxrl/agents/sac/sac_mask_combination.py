@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 from jaxrl.dict_learning.task_dict import OnlineDictLearnerV2
 from flax.core import freeze, unfreeze, FrozenDict
+import jax
 
 class RandomGenerateD(OnlineDictLearnerV2):
     pass
@@ -54,6 +55,42 @@ class MaskCombinationLearner(CoTASPLearner):
                 # Replace the i-th row
                 actor_params[k]['embedding'] = actor_params[k]['embedding'].at[task_id].set(alpha_l)
         self.actor = self.actor.update_params(freeze(actor_params))
+        # self.rng, _, dicts = _sample_actions(
+        #     self.rng, self.actor, self.dummy_o, jnp.array([task_id])
+        # )
+        # self.task_mask = get_task_mask(dicts['masks'])
+        # # store task_mask as npy file
+        # with open(f'./mask_npy/task_mask_{task_id}.npy', 'wb') as f:
+        #     np.save(f, self.task_mask)
+
+def get_task_mask(masks):
+    current_mask = {}
+    for key, value in masks.items():
+        current_mask[key] = value[0]
+    candidate_list = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
+    output_list = []
+    for name in candidate_list:
+        output_list.append(current_mask[name])
+    output_list = jnp.stack(output_list)
+    output_list = jnp.expand_dims(output_list, axis=[0, 3])
+    return output_list
+
+@jax.jit
+def _sample_actions(
+    rng,
+    actor,
+    observations: np.ndarray,
+    task_i: jnp.ndarray,
+    temperature: float = 1.0
+    ):
+    
+    rng, key = jax.random.split(rng)
+    dist, dicts = actor(
+        observations,
+        task_i,
+        temperature
+    )
+    return rng, dist.sample(seed=key), dicts
 
     
     
