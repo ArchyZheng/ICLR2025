@@ -19,6 +19,7 @@ class MaskCombinationLearner(CoTASPLearner):
         self.dict4layers_random = {}
         self.actor_configs = actor_configs
         self.dict_configs_random = dict_configs_random
+        self.seed = seed
         
         
     
@@ -42,7 +43,7 @@ class MaskCombinationLearner(CoTASPLearner):
             dict_learner = OnlineDictLearnerV2(
                 384,
                 hidn,
-                task_id * 10000 + id_layer + 10000,
+                task_id * 10000 + id_layer + 10000 + self.seed * 512,
                 None,
                 **dict_configs)
             self.dict4layers_random[f'random_embeds_bb_{id_layer}'] = dict_learner

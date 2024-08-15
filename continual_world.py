@@ -135,6 +135,8 @@ def get_single_env(
         env.seed(seed)
         env = RandomizationWrapper(env, get_subtasks(name), randomization)
         env.name = name
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
         env = TimeLimit(env, META_WORLD_TIME_HORIZON)
     env = gym.wrappers.ClipAction(env)
     if normalize_reward:
