@@ -133,6 +133,8 @@ def get_single_env(
     else:
         env = MT50.train_classes[name]()
         env.seed(seed)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
         env = RandomizationWrapper(env, get_subtasks(name), randomization)
         env.name = name
         env.action_space.seed(seed)

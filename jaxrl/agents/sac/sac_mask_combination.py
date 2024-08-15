@@ -21,6 +21,7 @@ class MaskCombinationLearner(CoTASPLearner):
         self.dict_configs_random = dict_configs_random
         self.seed = seed
         self.if_use_flexiable_lambda = False
+        self.seed = seed
         
         
     
