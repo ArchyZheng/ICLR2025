@@ -20,7 +20,7 @@ from jaxrl.agents.sac.TARndMaskCombination import TARndMaskCombinationLearner
 from continual_world import TASK_SEQS, get_single_env
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
+flags.DEFINE_string('env_name', 'task_8', 'Environment name.')
 flags.DEFINE_integer('seed', 110, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 

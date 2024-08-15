@@ -67,6 +67,12 @@ TASK_SEQS = {
         {'task': "stick-pull-v1", 'hint': 'Grasp a stick and pull a box with the stick.'},
         {'task': "push-back-v1", 'hint': 'Pull a puck to a goal.'},
         {'task': "shelf-place-v1", 'hint': 'Pick and place a puck onto a shelf.'},
+    ],
+    "task_8": [
+        {'task': "window-close-v1", 'hint': 'Push and close a window.'},
+    ],
+    "task_9": [
+        {'task': "peg-unplug-side-v1", 'hint': 'Unplug a peg sideways.'},
     ]
 }
 

@@ -174,8 +174,9 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
             tx=utils_fn.set_optimizer(**self.t_opt_configs)
         )
         # store task_mask to a file
-        with open(f'./mask_npy/task_mask_{task_id}.npy', 'wb') as f:
-            np.save(f, self.task_mask)
+        self.task_mask = jnp.load(f'./mask_npy/task_mask_8.npy')
+        # with open(f'./mask_npy/task_mask_{task_id}.npy', 'wb') as f:
+        #     np.save(f, self.task_mask)
         
     
     def update(self, task_id: int, batch: Batch, decoder_update: bool = False) -> utils_fn.Dict[str, float]:
