@@ -173,6 +173,10 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
             params=self.rnd_net_params,
             tx=utils_fn.set_optimizer(**self.t_opt_configs)
         )
+        # store task_mask to a file
+        with open(f'./mask_npy/task_mask_{task_id}.npy', 'wb') as f:
+            np.save(f, self.task_mask)
+        
     
     def update(self, task_id: int, batch: Batch, decoder_update: bool = False) -> utils_fn.Dict[str, float]:
         update_target = self.step % self.target_update_period == 0
