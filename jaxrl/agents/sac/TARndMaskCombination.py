@@ -116,6 +116,18 @@ def _update_theta(
 
     return rng, new_actor, actor_info, new_decoder, dicts
 
+def get_task_mask(masks):
+    current_mask = {}
+    for key, value in masks.items():
+        current_mask[key] = value[0]
+    candidate_list = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
+    output_list = []
+    for name in candidate_list:
+        output_list.append(current_mask[name])
+    output_list = jnp.stack(output_list)
+    output_list = jnp.expand_dims(output_list, axis=[0, 3])
+    return output_list
+
 
 class TARndMaskCombinationLearner(MaskCombinationLearner):
     def __init__(self, seed: int, observations: jnp.ndarray, actions: jnp.ndarray, task_num: int, load_policy_dir: str | None = None, load_dict_dir: str | None = None, update_dict=True, update_coef=True, dict_configs_fixed: dict = ..., dict_configs_random: dict = ..., pi_opt_configs: dict = ..., q_opt_configs: dict = ..., t_opt_configs: dict = ..., actor_configs: dict = ..., critic_configs: dict = ..., tau: float = 0.005, discount: float = 0.99, target_update_period: int = 1, target_entropy: float | None = None, init_temperature: float = 1, ext_coeff: float = 1.0, int_coeff: float = 1.0, rnd_rate: float = 1.0):
@@ -152,10 +164,10 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         for k in actor_params.keys():
             if k.startswith('embeds'):
                 task_embedding.append(actor_params[k]['embedding'][task_id])
-        task_embedding_alpha = jnp.stack(task_embedding, axis=0)
-        task_embedding_mask = ste_step_fn(task_embedding_alpha)
-        task_embedding_mask = jnp.expand_dims(task_embedding_mask, axis=[0, 3])
-        self.task_mask = task_embedding_mask
+        self.rng, _, dicts = _sample_actions(
+            self.rng, self.actor, self.dummy_o, jnp.array([task_id])
+        )
+        self.task_mask = get_task_mask(dicts['masks'])
         self.rnd_net_trainState = MPNTrainState.create(
             apply_fn=self.rnd_net.apply,
             params=self.rnd_net_params,
