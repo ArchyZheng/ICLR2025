@@ -246,10 +246,7 @@ def _update_decoder(task_id, batch, actor, decoder, rnd_net, task_mask, encoder_
         pre_input = jnp.concatenate([encoder_output, batch.actions], -1)
         predict_z = decoder(pre_input)
         target_z = rnd_net(batch.next_observations, task_mask)
-        @jax.vmap
-        def vector_norm(x): # L2 norm
-            return jnp.sqrt(jnp.sum(jnp.square(x)))
-        rnd_loss = vector_norm(target_z - predict_z).mean()
+        rnd_loss = jnp.mean(jnp.square(predict_z - target_z))
         return rnd_loss, {'rnd_loss': rnd_loss}
     
     grads_decoder, decoder_info = jax.grad(decoder_loss_fn, has_aux=True)(decoder.params)
