@@ -21,7 +21,6 @@ class RND_CNN(nn.Module):
             activation_fn('relu')])
         self.mlp = [nn.Dense(features=hidn, name=f'mlp_{i}') for i, hidn in enumerate(self.mlp_features)]
 
-    @nn.compact
     def __call__(self, x):
         x = self.cnn(x)
         x = jnp.reshape(x, (x.shape[0], -1)) # flatten
@@ -55,7 +54,6 @@ class rnd_network(nn.Module):
         self.final_output = nn.Sequential([
             nn.Dense(features=64, name='fc4')])
 
-    @nn.compact
     def __call__(self, 
                  x: jnp.ndarray, task_mask: jnp.ndarray):
         
