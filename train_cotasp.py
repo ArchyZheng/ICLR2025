@@ -16,7 +16,8 @@ from jaxrl.datasets import ReplayBuffer
 from jaxrl.evaluation import evaluate_cl
 from jaxrl.utils import Logger
 from jaxrl.agents.sac.sac_learner import CoTASPLearner
-from jaxrl.agents.sac.sac_mask_combination import MaskCombinationLearner
+from jaxrl.agents.sac.FGMaskLearner import MaskCombinationLearner
+from jaxrl.agents.sac.RNDLearner import RNDLearner
 from continual_world import TASK_SEQS, get_single_env
 
 FLAGS = flags.FLAGS
@@ -42,7 +43,7 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "check repeatness", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "FG_MASK+TA_RND", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', False, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '/home/yijunyan/Data/PyCode/CoTASP/logs', 'Logging dir.')
@@ -98,7 +99,8 @@ def main(_):
         randomization=FLAGS.env_type)
     if algo == 'cotasp':
         # agent = CoTASPLearner(
-        agent = MaskCombinationLearner(
+        # agent = MaskCombinationLearner(
+        agent = RNDLearner(
             FLAGS.seed,
             temp_env.observation_space.sample()[np.newaxis],
             temp_env.action_space.sample()[np.newaxis], 
