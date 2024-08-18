@@ -15,6 +15,7 @@
                 "WANDB_API_KEY": "d3be0188f8e6de441fe26438708884794c8db33f",
                 "XLA_PYTHON_CLIENT_PREALLOCATE": "false"
             },
+            "justMyCode": false,
             "console": "integratedTerminal"
         }
     ],

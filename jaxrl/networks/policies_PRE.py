@@ -22,7 +22,7 @@ class Decoder_PRE(nn.Module):
     Input the features
     Output the x. 
     """
-    features = [1024, 256, 64]
+    features = [256, 256, 256, 64]
 
     def setup(self):
         self.decoder = [nn.Dense(hidn, kernel_init=default_init()) for hidn in self.features]

@@ -14,20 +14,18 @@ from flax.core import FrozenDict
 from jax import custom_jvp
 
 class RND_CNN(nn.Module):
-    mlp_features = [128, 64]
+    mlp_features = [1016]
     def setup(self):
         self.cnn = nn.Sequential([
-            nn.Conv(features=1, kernel_size=(2, 2), strides=(1, 1), name='conv1', kernel_init=default_init(jnp.sqrt(2)), padding='VALID'),
-            activation_fn('relu'),])
-        self.mlp = [nn.Dense(features=hidn, name=f'mlp_{i}') for i, hidn in enumerate(self.mlp_features)]
+            nn.Conv(features=1, kernel_size=(4, 4), strides=(1, 1), name='conv1', kernel_init=default_init(jnp.sqrt(2)), padding='VALID'),
+            activation_fn('leaky_relu'),])
+        self.mlp = nn.Dense(features=1016, name=f'mlp_1')
 
     def __call__(self, x):
         x = self.cnn(x)
         x = jnp.reshape(x, (x.shape[0], -1)) # flatten
-        for i, layer in enumerate(self.mlp):
-            x = layer(x)
-            if i < len(self.mlp) - 1:
-                x = activation_fn('leaky_relu')(x)
+        x = self.mlp(x)
+        x = activation_fn('leaky_relu')(x)
         return x
 
 class rnd_network(nn.Module):
@@ -43,11 +41,11 @@ class rnd_network(nn.Module):
         # MLP setup
         self.mlp_obs = nn.Sequential([
             nn.Dense(features=256, name='fc1'),
-            nn.LayerNorm(),
-            activation_fn('leaky_relu'),
-            nn.Dense(features=64, name='fc3')])
-        
-        self.final_output = nn.Sequential([
+            activation_fn('relu'),
+            nn.Dense(features=256, name='fc2'),
+            activation_fn('relu'),
+            nn.Dense(features=256, name='fc3'),
+            activation_fn('relu'),
             nn.Dense(features=64, name='fc4')])
 
     def __call__(self, 
@@ -55,9 +53,8 @@ class rnd_network(nn.Module):
         
         mask_process = self.rnd_cnn(task_mask)
         mask_output_reshape = jnp.tile(mask_process, (x.shape[0], 1))
-        phi_next_st = self.mlp_obs(x)
-        target_next_st = jnp.multiply(phi_next_st, mask_output_reshape)
-        phi_next_st = self.final_output(target_next_st)
+        target_next_st = jnp.concatenate([x, mask_output_reshape], -1)
+        phi_next_st = self.mlp_obs(target_next_st)
 
         return phi_next_st
 

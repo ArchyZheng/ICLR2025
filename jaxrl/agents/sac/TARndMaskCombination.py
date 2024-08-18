@@ -134,16 +134,6 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         super().__init__(seed, observations, actions, task_num, load_policy_dir, load_dict_dir, update_dict, update_coef, dict_configs_fixed, dict_configs_random, pi_opt_configs, q_opt_configs, t_opt_configs, actor_configs, critic_configs, tau, discount, target_update_period, target_entropy, init_temperature)
         self.rng, key = jax.random.split(self.rng, 2)
 
-        decoder_def = Decoder_PRE()
-        decoder_params = FrozenDict(decoder_def.init(key, jnp.ones((1, 1024 + 4)))) # 1024: state dim, 4: action dim
-        decoder_network = TrainState.create(
-            apply_fn=decoder_def.apply,
-            params=decoder_params,
-            tx=utils_fn.set_optimizer(**t_opt_configs)
-        )
-
-        self.t_opt_configs = t_opt_configs
-        self.decoder = decoder_network
 
         rnd_def = rnd_network()
         rnd_net_params = FrozenDict(rnd_def.init(key, jnp.ones((1, 12)), jnp.ones((1, 4, 1024, 1))))
@@ -152,6 +142,19 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
             params=rnd_net_params,
             tx=utils_fn.set_optimizer(**t_opt_configs)
         )
+
+        decoder_def = Decoder_PRE()
+        decoder_params = FrozenDict(decoder_def.init(key, jnp.ones((1, 12 + 4)))) # 1024: state dim, 4: action dim
+        k_opt_configs = t_opt_configs
+        k_opt_configs['opt_kargs']['learning_rate'] = 1e-5
+        decoder_network = TrainState.create(
+            apply_fn=decoder_def.apply,
+            params=decoder_params,
+            tx=utils_fn.set_optimizer(**k_opt_configs)
+        )
+
+        self.t_opt_configs = t_opt_configs
+        self.decoder = decoder_network
 
         self.ext_coeff = ext_coeff
         self.int_coeff = int_coeff
@@ -243,11 +246,14 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
 @jax.jit
 def _update_decoder(task_id, batch, actor, decoder, rnd_net, task_mask, encoder_output):
     def decoder_loss_fn(decoder_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
-        pre_input = jnp.concatenate([encoder_output, batch.actions], -1)
+        pre_input = jnp.concatenate([batch.observations, batch.actions], -1)
         predict_z = decoder.apply_fn(decoder.params, pre_input)
         target_z = rnd_net.apply_fn(rnd_net.params, batch.next_observations, task_mask)
-        rnd_loss = jnp.sum(jnp.square(predict_z - target_z))
-        return rnd_loss, {'rnd_loss': rnd_loss}
+        rnd_loss = ((predict_z - target_z)**2).sum(axis=1)
+
+
+        loss = rnd_loss.mean()
+        return loss, {'rnd_loss': loss, 'predict_z_mean': jnp.mean(predict_z), 'target_z_mean': jnp.mean(target_z)}
     
     grads_decoder, decoder_info = jax.grad(decoder_loss_fn, has_aux=True)(decoder.params)
     new_decoder = decoder.apply_gradients(grads=grads_decoder)
@@ -270,7 +276,7 @@ def _update_critic(
     # >>>>>>>>>>>>>>>> add intrisic reward >>>>>>>>>>>>>>>>>>>>>>>
     ext_reward = batch.rewards # task reward
     encoder_output = dicts['encoder_output']
-    pre_input = jnp.concatenate([encoder_output, batch.actions], -1)
+    pre_input = jnp.concatenate([batch.observations, batch.actions], -1)
     predict_z = decoder.apply_fn(decoder.params, pre_input)
     target_z = rnd_net.apply_fn(rnd_net.params, batch.next_observations, task_mask)
     intrisic_reward = jnp.sum(jnp.square(predict_z - target_z), axis=1)
@@ -311,6 +317,6 @@ def _update_critic(
     else:
         new_target_critic = target_update(new_critic, target_critic, 0)
 
-    return rng, new_critic, new_target_critic, critic_info   
+    return rng, new_critic, new_target_critic, critic_info 
 
         
