@@ -1,3 +1,9 @@
+# # %%
+# import os
+# import sys
+# rootdir = os.path.join(os.getcwd(), '../../')
+# sys.path.append(rootdir)
+# %%
 from jax.numpy import ndarray
 from jaxrl.networks.policies import MetaPolicy
 import flax.linen as nn
@@ -19,11 +25,11 @@ class Decoder_PRE(nn.Module):
     features = [1024, 256, 64]
 
     def setup(self):
-        self.decoder1 = [nn.Dense(hidn, kernel_init=default_init()) for hidn in self.features]
+        self.decoder = [nn.Dense(hidn, kernel_init=default_init()) for hidn in self.features]
 
     def __call__(self, x):
-        for i, layer in enumerate(self.decoder1): # BUG: why we should use self.decoder[0]???
+        for i, layer in enumerate(self.decoder):
             x = layer(x)
-            if i < len(self.decoder1) - 1:
+            if i < len(self.decoder) - 1:
                 x = activation_fn('relu')(x)
         return x

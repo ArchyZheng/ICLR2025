@@ -135,7 +135,7 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         self.rng, key = jax.random.split(self.rng, 2)
 
         decoder_def = Decoder_PRE()
-        decoder_params = FrozenDict(decoder_def.init(key, jnp.ones((1, 1024 + 4))).pop('params')) # 1024: state dim, 4: action dim
+        decoder_params = FrozenDict(decoder_def.init(key, jnp.ones((1, 1024 + 4)))) # 1024: state dim, 4: action dim
         decoder_network = TrainState.create(
             apply_fn=decoder_def.apply,
             params=decoder_params,
@@ -146,7 +146,7 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         self.decoder = decoder_network
 
         rnd_def = rnd_network()
-        rnd_net_params = FrozenDict(rnd_def.init(key, jnp.ones((1, 12)), jnp.ones((1, 4, 1024, 1))).pop('params'))
+        rnd_net_params = FrozenDict(rnd_def.init(key, jnp.ones((1, 12)), jnp.ones((1, 4, 1024, 1))))
         self.rnd_network = TrainState.create(
             apply_fn=rnd_def.apply,
             params=rnd_net_params,
@@ -244,9 +244,9 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
 def _update_decoder(task_id, batch, actor, decoder, rnd_net, task_mask, encoder_output):
     def decoder_loss_fn(decoder_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
         pre_input = jnp.concatenate([encoder_output, batch.actions], -1)
-        predict_z = decoder(pre_input)
-        target_z = rnd_net(batch.next_observations, task_mask)
-        rnd_loss = jnp.mean(jnp.square(predict_z - target_z))
+        predict_z = decoder.apply_fn(decoder.params, pre_input)
+        target_z = rnd_net.apply_fn(rnd_net.params, batch.next_observations, task_mask)
+        rnd_loss = jnp.sum(jnp.square(predict_z - target_z))
         return rnd_loss, {'rnd_loss': rnd_loss}
     
     grads_decoder, decoder_info = jax.grad(decoder_loss_fn, has_aux=True)(decoder.params)
@@ -271,12 +271,9 @@ def _update_critic(
     ext_reward = batch.rewards # task reward
     encoder_output = dicts['encoder_output']
     pre_input = jnp.concatenate([encoder_output, batch.actions], -1)
-    predict_z = decoder(pre_input)
-    target_z = rnd_net(batch.next_observations, task_mask)
-    @jax.vmap
-    def vector_norm(x): # L2 norm
-        return jnp.sqrt(jnp.sum(jnp.square(x)))
-    intrisic_reward = vector_norm(predict_z - target_z)
+    predict_z = decoder.apply_fn(decoder.params, pre_input)
+    target_z = rnd_net.apply_fn(rnd_net.params, batch.next_observations, task_mask)
+    intrisic_reward = jnp.sum(jnp.square(predict_z - target_z), axis=1)
 
     reward = ext_coeff * ext_reward + int_coeff * intrisic_reward
     # <<<<<<<<<<<<<<<< add intrisic reward <<<<<<<<<<<<<<<<<<<<<<<
