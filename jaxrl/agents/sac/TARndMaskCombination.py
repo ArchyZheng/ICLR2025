@@ -182,8 +182,8 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         )
 
         # update the decoder
-        new_decoder, decoder_info = _update_decoder(task_id, batch, new_actor, new_decoder, self.rnd_network, self.task_mask, dicts['encoder_output'])
-        info.update(decoder_info)
+        # new_decoder, decoder_info = _update_decoder(task_id, batch, new_actor, new_decoder, self.rnd_network, self.task_mask, dicts['encoder_output'])
+        # info.update(decoder_info)
 
         self.step += 1
         self.rng = new_rng
