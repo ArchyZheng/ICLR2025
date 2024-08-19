@@ -168,6 +168,7 @@ def main(_):
             else:
                 action = agent.sample_actions(observation[np.newaxis], task_idx)
                 action = np.asarray(action, dtype=np.float32).flatten()
+            # action = env.action_space.sample()
                 
             # action = env.action_space.sample()
             next_observation, reward, done, info = env.step(action)

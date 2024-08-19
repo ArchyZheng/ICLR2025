@@ -1,3 +1,4 @@
+import optax
 from jax.numpy import ndarray
 from numpy import ndarray
 from jaxrl.agents.sac.sac_learner import CoTASPLearner
@@ -6,7 +7,7 @@ from jaxrl.agents.sac.sac_mask_combination import MaskCombinationLearner
 import jax.numpy as jnp
 from jaxrl.datasets.dataset import Batch
 from jaxrl.networks.policies_PRE import Decoder_PRE
-from jaxrl.networks.rnd_net import rnd_network
+from jaxrl.networks.rnd_net import rnd_network, RND
 from jaxrl.agents.sac.critic import target_update
 import jax
 from flax.core import FrozenDict, unfreeze, freeze
@@ -41,17 +42,17 @@ def _sample_actions(
 def _update_cotasp_jit(rng: PRNGKey, task_id: int, tau: float, discount: float, 
     target_entropy: float, param_mask: FrozenDict[str, Any], 
     actor: MPNTrainState, critic: TrainState, target_critic: TrainState, 
-    update_target, temp: TrainState, batch: Batch, decoder: TrainState, rnd_net: TrainState, ext_coeff: float, int_coeff: float, task_mask = None
+    update_target, temp: TrainState, batch: Batch, rnd: TrainState, ext_coeff: float, int_coeff: float, task_mask = None
     ) -> Tuple[PRNGKey, MPNTrainState, TrainState, TrainState, TrainState, InfoDict]:
     # optimizing critics 
     new_rng, new_critic, new_target_critic, critic_info = _update_critic(
         rng, task_id, actor, critic, target_critic, update_target, temp, 
-        batch, discount, tau, decoder, rnd_net, ext_coeff, int_coeff, task_mask
+        batch, discount, tau, rnd, ext_coeff, int_coeff, task_mask
     )
 
     # optimizing either alpha or theta
-    new_rng, new_actor, actor_info, new_decoder, dicts = _update_theta(
-        new_rng, task_id, param_mask, actor, new_critic, temp, batch, decoder
+    new_rng, new_actor, actor_info = _update_theta(
+        new_rng, task_id, param_mask, actor, new_critic, temp, batch
     )
     
     # updating temperature coefficient
@@ -63,13 +64,13 @@ def _update_cotasp_jit(rng: PRNGKey, task_id: int, tau: float, discount: float,
         **actor_info,
         **temp_info,
         **critic_info
-    }, new_decoder, dicts
+    }
 
 @jax.jit
 def _update_theta(
     rng: PRNGKey, task_id: int, param_mask: FrozenDict[str, Any], 
     actor: MPNTrainState, critic: TrainState, temp: TrainState, 
-    batch: Batch, decoder: TrainState) -> Tuple[PRNGKey, MPNTrainState, InfoDict]:
+    batch: Batch) -> Tuple[PRNGKey, MPNTrainState, InfoDict]:
 
     rng, key = jax.random.split(rng)
     def actor_decoder_loss_fn(actor_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
@@ -112,9 +113,8 @@ def _update_theta(
     
     # only update policy parameters (theta)
     new_actor = actor.apply_grads_theta(grads=freeze(unfrozen_grads))
-    new_decoder = decoder
 
-    return rng, new_actor, actor_info, new_decoder, dicts
+    return rng, new_actor, actor_info
 
 def get_task_mask(masks):
     current_mask = {}
@@ -133,28 +133,12 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
     def __init__(self, seed: int, observations: jnp.ndarray, actions: jnp.ndarray, task_num: int, load_policy_dir: str | None = None, load_dict_dir: str | None = None, update_dict=True, update_coef=True, dict_configs_fixed: dict = ..., dict_configs_random: dict = ..., pi_opt_configs: dict = ..., q_opt_configs: dict = ..., t_opt_configs: dict = ..., actor_configs: dict = ..., critic_configs: dict = ..., tau: float = 0.005, discount: float = 0.99, target_update_period: int = 1, target_entropy: float | None = None, init_temperature: float = 1, ext_coeff: float = 1.0, int_coeff: float = 1.0, rnd_rate: float = 1.0):
         super().__init__(seed, observations, actions, task_num, load_policy_dir, load_dict_dir, update_dict, update_coef, dict_configs_fixed, dict_configs_random, pi_opt_configs, q_opt_configs, t_opt_configs, actor_configs, critic_configs, tau, discount, target_update_period, target_entropy, init_temperature)
         self.rng, key = jax.random.split(self.rng, 2)
-
-
-        rnd_def = rnd_network()
-        rnd_net_params = FrozenDict(rnd_def.init(key, jnp.ones((1, 12)), jnp.ones((1, 4, 1024, 1))))
-        self.rnd_network = TrainState.create(
-            apply_fn=rnd_def.apply,
-            params=rnd_net_params,
-            tx=utils_fn.set_optimizer(**t_opt_configs)
+        rnd_module = RND()
+        self.rnd = TrainState.create(
+            apply_fn=rnd_module.apply,
+            params=rnd_module.init(key, jnp.ones((1, 12)), jnp.ones((1, 4, 1024, 1)), jnp.ones((1, 12)), jnp.ones((1, 4))),
+            tx=optax.adam(1e-3)
         )
-
-        decoder_def = Decoder_PRE()
-        decoder_params = FrozenDict(decoder_def.init(key, jnp.ones((1, 12 + 4)))) # 1024: state dim, 4: action dim
-        k_opt_configs = t_opt_configs
-        k_opt_configs['opt_kargs']['learning_rate'] = 1e-5
-        decoder_network = TrainState.create(
-            apply_fn=decoder_def.apply,
-            params=decoder_params,
-            tx=utils_fn.set_optimizer(**k_opt_configs)
-        )
-
-        self.t_opt_configs = t_opt_configs
-        self.decoder = decoder_network
 
         self.ext_coeff = ext_coeff
         self.int_coeff = int_coeff
@@ -178,14 +162,14 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         update_target = self.step % self.target_update_period == 0
 
         # update the actor, critic, temperature, and target critic
-        new_rng, new_actor, new_temp, new_critic, new_target_critic, info, new_decoder, dicts = _update_cotasp_jit(
+        new_rng, new_actor, new_temp, new_critic, new_target_critic, info = _update_cotasp_jit(
             self.rng, task_id, self.tau, self.discount, self.target_entropy, 
             self.param_masks, self.actor, self.critic, self.target_critic, update_target,
-            self.temp, batch, self.decoder, self.rnd_network, self.ext_coeff, self.int_coeff, task_mask = self.task_mask
+            self.temp, batch, self.rnd, self.ext_coeff, self.int_coeff, task_mask = self.task_mask
         )
 
         # update the decoder
-        new_decoder, decoder_info = _update_decoder(task_id, batch, new_actor, new_decoder, self.rnd_network, self.task_mask, dicts['encoder_output'])
+        new_rnd, decoder_info = _update_decoder(batch, self.rnd, self.task_mask)
         info.update(decoder_info)
 
         self.step += 1
@@ -194,7 +178,7 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         self.temp = new_temp 
         self.critic = new_critic
         self.target_critic = new_target_critic   
-        self.decoder = new_decoder
+        self.rnd = new_rnd
 
         if self.old_task_id != task_id or self.current_parameter_info['frozen_parameter_number'] is None:
             self.rng, _, dicts = _sample_actions(
@@ -244,26 +228,22 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         return frozen_params_number, actor_params_number, overlap_parameter_number, actor_params_number - overlap_parameter_number
 
 @jax.jit
-def _update_decoder(task_id, batch, actor, decoder, rnd_net, task_mask, encoder_output):
-    def decoder_loss_fn(decoder_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
-        pre_input = jnp.concatenate([batch.observations, batch.actions], -1)
-        predict_z = decoder.apply_fn(decoder.params, pre_input)
-        target_z = rnd_net.apply_fn(rnd_net.params, batch.next_observations, task_mask)
-        rnd_loss = ((predict_z - target_z)**2).sum(axis=1)
-
-
-        loss = rnd_loss.mean()
-        return loss, {'rnd_loss': loss, 'predict_z_mean': jnp.mean(predict_z), 'target_z_mean': jnp.mean(target_z)}
+def _update_decoder(batch, rnd: TrainState, task_mask):
+    def rnd_loss_fn(params) -> Tuple[jnp.ndarray, InfoDict]:
+        pred, target = rnd.apply_fn(params, batch.next_observations, task_mask, batch.observations, batch.actions)
+        raw_loss = ((pred - target)**2).sum(axis=1)
+        loss = raw_loss.mean()
+        return loss, {'rnd_loss': loss, 'predict_z_mean': jnp.mean(pred), 'target_z_mean': jnp.mean(target)}
     
-    grads_decoder, decoder_info = jax.grad(decoder_loss_fn, has_aux=True)(decoder.params)
-    new_decoder = decoder.apply_gradients(grads=grads_decoder)
-    return new_decoder, decoder_info
+    (loss, info), grads = jax.value_and_grad(rnd_loss_fn, has_aux=True)(rnd.params)
+    new_rnd = rnd.apply_gradients(grads=grads)
+    return new_rnd, info
     
 
 def _update_critic(
     rng: PRNGKey, task_id: int, actor: MPNTrainState, critic: TrainState, 
     target_critic: TrainState, update_target: bool, temp: TrainState, batch: Batch, 
-    discount: float, tau: float, decoder: TrainState, rnd_net: TrainState, ext_coeff: float, int_coeff: float, task_mask) -> Tuple[PRNGKey, TrainState, TrainState, InfoDict]:
+    discount: float, tau: float, rnd: TrainState, ext_coeff: float, int_coeff: float, task_mask) -> Tuple[PRNGKey, TrainState, TrainState, InfoDict]:
     
     rng, key = jax.random.split(rng)
     dist, dicts = actor(batch.next_observations, jnp.array([task_id]))
@@ -275,12 +255,8 @@ def _update_critic(
 
     # >>>>>>>>>>>>>>>> add intrisic reward >>>>>>>>>>>>>>>>>>>>>>>
     ext_reward = batch.rewards # task reward
-    encoder_output = dicts['encoder_output']
-    pre_input = jnp.concatenate([batch.observations, batch.actions], -1)
-    predict_z = decoder.apply_fn(decoder.params, pre_input)
-    target_z = rnd_net.apply_fn(rnd_net.params, batch.next_observations, task_mask)
-    intrisic_reward = jnp.sum(jnp.square(predict_z - target_z), axis=1)
-
+    pred, target = rnd.apply_fn(rnd.params, batch.next_observations, task_mask, batch.observations, batch.actions)
+    intrisic_reward = jnp.sum((pred - target)**2, axis=1)
     reward = ext_coeff * ext_reward + int_coeff * intrisic_reward
     # <<<<<<<<<<<<<<<< add intrisic reward <<<<<<<<<<<<<<<<<<<<<<<
 

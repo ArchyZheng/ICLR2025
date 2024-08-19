@@ -12,6 +12,7 @@ import jax
 from jaxrl.networks.common import default_init, activation_fn
 from flax.core import FrozenDict
 from jax import custom_jvp
+from jaxrl.networks.policies_PRE import Decoder_PRE
 
 class RND_CNN(nn.Module):
     mlp_features = [1016]
@@ -46,7 +47,7 @@ class rnd_network(nn.Module):
             activation_fn('relu'),
             nn.Dense(features=256, name='fc3'),
             activation_fn('relu'),
-            nn.Dense(features=64, name='fc4')])
+            nn.Dense(features=32, name='fc4')])
 
     def __call__(self, 
                  x: jnp.ndarray, task_mask: jnp.ndarray):
@@ -58,3 +59,12 @@ class rnd_network(nn.Module):
 
         return phi_next_st
 
+class RND(nn.Module):
+    def setup(self):
+        self.target_network = rnd_network()
+        self.predict_network = Decoder_PRE()
+    
+    def __call__(self, next_observations: jnp.ndarray, task_mask: jnp.ndarray, observations: jnp.ndarray, actions: jnp.ndarray):
+        target = self.target_network(next_observations, task_mask)
+        pred = self.predict_network(jnp.concatenate([observations, actions], -1))
+        return pred, jax.lax.stop_gradient(target)
