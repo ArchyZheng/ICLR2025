@@ -148,7 +148,8 @@ def rnd_bonus(
     observations = normalize(batch.observations, rnd.states_mean, rnd.states_std)
     actions = normalize(batch.actions, rnd.actions_mean, rnd.actions_std)
     pred, target = rnd.apply_fn(rnd.params, next_observations, task_mask, observations, actions)
-    bonus = jnp.sum((pred - target)**2, axis=1) / rnd.rms.std
+    std = ((pred - target) ** 2).std()
+    bonus = jnp.sum((pred - target)**2, axis=1) / std
     return bonus
 
 
@@ -188,11 +189,11 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
     
     def update(self, task_id: int, batch: Batch) -> utils_fn.Dict[str, float]:
         update_target = self.step % self.target_update_period == 0
-        flag_first_run = False
-        if self.rnd.rms.state['count'] < 200:
-            new_rnd, decoder_info = _update_decoder(batch, self.rnd, self.task_mask) # update rnd first to avoid the std == 0
-            self.rnd = new_rnd
-            flag_first_run = True
+        # flag_first_run = False
+        # if self.rnd.rms.state['count'] < 200:
+        #     new_rnd, decoder_info = _update_decoder(batch, self.rnd, self.task_mask) # update rnd first to avoid the std == 0
+        #     self.rnd = new_rnd
+        #     flag_first_run = True
 
         # update the actor, critic, temperature, and target critic
         new_rng, new_actor, new_temp, new_critic, new_target_critic, info = _update_cotasp_jit(
@@ -200,9 +201,9 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
             self.param_masks, self.actor, self.critic, self.target_critic, update_target,
             self.temp, batch, self.rnd, self.ext_coeff, self.int_coeff, task_mask = self.task_mask
         )
-        if flag_first_run == False:
-            new_rnd, decoder_info = _update_decoder(batch, self.rnd, self.task_mask)
-            self.rnd = new_rnd
+        # if flag_first_run == False:
+        new_rnd, decoder_info = _update_decoder(batch, self.rnd, self.task_mask)
+        self.rnd = new_rnd
 
         # update the decoder
         info.update(decoder_info)
@@ -261,11 +262,11 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
 
         return frozen_params_number, actor_params_number, overlap_parameter_number, actor_params_number - overlap_parameter_number
     
-    def end_task(self, task_id: int, save_actor_dir: str, save_dict_dir: str):
-        dict_state = super().end_task(task_id, save_actor_dir, save_dict_dir)
-        new_rms = RunningMeanStd.create()
-        self.rnd = self.rnd.replace(rms=new_rms)
-        return dict_state
+    # def end_task(self, task_id: int, save_actor_dir: str, save_dict_dir: str):
+    #     dict_state = super().end_task(task_id, save_actor_dir, save_dict_dir)
+    #     new_rms = RunningMeanStd.create()
+    #     self.rnd = self.rnd.replace(rms=new_rms)
+    #     return dict_state
 
 
 @jax.jit
