@@ -227,9 +227,9 @@ class MetaPolicy(nn.Module):
         if self.use_layer_norm:
             self.masked_ln = MaskedLayerNorm(use_bias=False, use_scale=False)
 
-        mask = np.load('mask_npy/task_mask_8.npy')
+        mask = np.load('mask_npy/task_mask_9.npy')
         self.mask = jnp.squeeze(mask)
-        self.mask = jnp.expand_dims(mask, axis=1)
+        # self.mask = jnp.expand_dims(mask, axis=1)
 
     def __call__(self,
                  x: jnp.ndarray,
