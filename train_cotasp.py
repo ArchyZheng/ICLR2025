@@ -2,7 +2,6 @@
 CONTINUAL TASK ALLOCATION IN META-POLICY NETWORK VIA SPARSE PROMPTING
 '''
 
-import itertools
 import random
 import time
 
@@ -15,13 +14,12 @@ from ml_collections import config_flags, ConfigDict
 from jaxrl.datasets import ReplayBuffer
 from jaxrl.evaluation import evaluate_cl
 from jaxrl.utils import Logger
-from jaxrl.agents.sac.sac_learner import CoTASPLearner
 from jaxrl.agents.sac.TARndMaskCombination import TARndMaskCombinationLearner
 from continual_world import TASK_SEQS, get_single_env
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
-flags.DEFINE_integer('seed', 110, 'Random seed.')
+flags.DEFINE_integer('seed', 330, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
 flags.DEFINE_string('env_type', 'random_init_all', 'The type of env is either deterministic or random_init_all')
@@ -43,7 +41,7 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "FG-MASK + TA-RND", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "TA-RND & FG-MASK", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', False, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '/home/yijunyan/Data/PyCode/CoTASP/logs', 'Logging dir.')
@@ -148,8 +146,6 @@ def main(_):
         replay_buffer = ReplayBuffer(
             env.observation_space, env.action_space, FLAGS.buffer_size or FLAGS.max_step
         )
-        # reset scheduler
-        schedule = itertools.cycle([False]*FLAGS.theta_step + [True]*FLAGS.decoder_update_step)
         # reset environment
         observation, done = env.reset(), False
         for idx in range(FLAGS.max_step):
@@ -168,7 +164,13 @@ def main(_):
             else:
                 action = agent.sample_actions(observation[np.newaxis], task_idx)
                 action = np.asarray(action, dtype=np.float32).flatten()
-            # action = env.action_space.sample()
+
+            if idx == FLAGS.start_training:
+                observation_mean = replay_buffer.observations.mean(axis=0)
+                observation_std = replay_buffer.observations.std(axis=0)
+                action_mean = replay_buffer.actions.mean(axis=0)
+                action_std = replay_buffer.actions.std(axis=0)
+                agent.rnd = agent.rnd.replace(states_mean=observation_mean, states_std=observation_std, actions_mean=action_mean, actions_std=action_std)
                 
             # action = env.action_space.sample()
             next_observation, reward, done, info = env.step(action)

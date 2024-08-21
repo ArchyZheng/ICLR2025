@@ -19,6 +19,14 @@ import functools
 from jaxrl.agents.sac.sac_learner import _update_critic, _update_temp
 import numpy as np
 from jaxrl.dict_learning.task_dict import OnlineDictLearnerV2
+from jaxrl.networks.running_moments import RunningMeanStd
+
+class RNDTrainState(TrainState):
+    rms: RunningMeanStd
+    states_mean: jax.Array
+    states_std: jax.Array
+    actions_mean: jax.Array
+    actions_std: jax.Array
 
 
 @jax.jit
@@ -128,16 +136,36 @@ def get_task_mask(masks):
     output_list = jnp.expand_dims(output_list, axis=[0, 3])
     return output_list
 
+def normalize(arr: jax.Array, mean: jax.Array, std: jax.Array, eps: float = 1e-8) -> jax.Array:
+    return (arr - mean) / (std + eps)
+
+def rnd_bonus(
+    rnd: RNDTrainState,
+    batch: Batch,
+    task_mask: jax.Array
+) -> jax.Array:
+    next_observations = normalize(batch.next_observations, rnd.states_mean, rnd.states_std)
+    observations = normalize(batch.observations, rnd.states_mean, rnd.states_std)
+    actions = normalize(batch.actions, rnd.actions_mean, rnd.actions_std)
+    pred, target = rnd.apply_fn(rnd.params, next_observations, task_mask, observations, actions)
+    bonus = jnp.sum((pred - target)**2, axis=1) / rnd.rms.std
+    return bonus
+
 
 class TARndMaskCombinationLearner(MaskCombinationLearner):
     def __init__(self, seed: int, observations: jnp.ndarray, actions: jnp.ndarray, task_num: int, load_policy_dir: str | None = None, load_dict_dir: str | None = None, update_dict=True, update_coef=True, dict_configs_fixed: dict = ..., dict_configs_random: dict = ..., pi_opt_configs: dict = ..., q_opt_configs: dict = ..., t_opt_configs: dict = ..., actor_configs: dict = ..., critic_configs: dict = ..., tau: float = 0.005, discount: float = 0.99, target_update_period: int = 1, target_entropy: float | None = None, init_temperature: float = 1, ext_coeff: float = 1.0, int_coeff: float = 1.0, rnd_rate: float = 1.0):
         super().__init__(seed, observations, actions, task_num, load_policy_dir, load_dict_dir, update_dict, update_coef, dict_configs_fixed, dict_configs_random, pi_opt_configs, q_opt_configs, t_opt_configs, actor_configs, critic_configs, tau, discount, target_update_period, target_entropy, init_temperature)
         self.rng, key = jax.random.split(self.rng, 2)
         rnd_module = RND()
-        self.rnd = TrainState.create(
+        self.rnd = RNDTrainState.create(
             apply_fn=rnd_module.apply,
             params=rnd_module.init(key, jnp.ones((1, 12)), jnp.ones((1, 4, 1024, 1)), jnp.ones((1, 12)), jnp.ones((1, 4))),
-            tx=optax.adam(1e-3)
+            tx=optax.adam(1e-3),
+            rms=RunningMeanStd.create(),
+            states_mean=jnp.zeros((1, 12)),
+            states_std=jnp.zeros((1, 12)),
+            actions_mean=jnp.zeros((1, 4)),
+            actions_std=jnp.zeros((1, 4)),
         )
 
         self.ext_coeff = ext_coeff
@@ -160,6 +188,11 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
     
     def update(self, task_id: int, batch: Batch) -> utils_fn.Dict[str, float]:
         update_target = self.step % self.target_update_period == 0
+        flag_first_run = False
+        if self.rnd.rms.state['count'] < 200:
+            new_rnd, decoder_info = _update_decoder(batch, self.rnd, self.task_mask) # update rnd first to avoid the std == 0
+            self.rnd = new_rnd
+            flag_first_run = True
 
         # update the actor, critic, temperature, and target critic
         new_rng, new_actor, new_temp, new_critic, new_target_critic, info = _update_cotasp_jit(
@@ -167,9 +200,11 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
             self.param_masks, self.actor, self.critic, self.target_critic, update_target,
             self.temp, batch, self.rnd, self.ext_coeff, self.int_coeff, task_mask = self.task_mask
         )
+        if flag_first_run == False:
+            new_rnd, decoder_info = _update_decoder(batch, self.rnd, self.task_mask)
+            self.rnd = new_rnd
 
         # update the decoder
-        new_rnd, decoder_info = _update_decoder(batch, self.rnd, self.task_mask)
         info.update(decoder_info)
 
         self.step += 1
@@ -178,7 +213,6 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         self.temp = new_temp 
         self.critic = new_critic
         self.target_critic = new_target_critic   
-        self.rnd = new_rnd
 
         if self.old_task_id != task_id or self.current_parameter_info['frozen_parameter_number'] is None:
             self.rng, _, dicts = _sample_actions(
@@ -226,17 +260,29 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
             actor_params_number += jnp.sum(1 - actor_params_array[i])
 
         return frozen_params_number, actor_params_number, overlap_parameter_number, actor_params_number - overlap_parameter_number
+    
+    def end_task(self, task_id: int, save_actor_dir: str, save_dict_dir: str):
+        dict_state = super().end_task(task_id, save_actor_dir, save_dict_dir)
+        new_rms = RunningMeanStd.create()
+        self.rnd = self.rnd.replace(rms=new_rms)
+        return dict_state
+
 
 @jax.jit
-def _update_decoder(batch, rnd: TrainState, task_mask):
+def _update_decoder(batch, rnd: RNDTrainState, task_mask):
     def rnd_loss_fn(params) -> Tuple[jnp.ndarray, InfoDict]:
-        pred, target = rnd.apply_fn(params, batch.next_observations, task_mask, batch.observations, batch.actions)
+        next_observations = normalize(batch.next_observations, rnd.states_mean, rnd.states_std)
+        observations = normalize(batch.observations, rnd.states_mean, rnd.states_std)
+        actions = normalize(batch.actions, rnd.actions_mean, rnd.actions_std)
+        pred, target = rnd.apply_fn(params, next_observations, task_mask, observations, actions)
         raw_loss = ((pred - target)**2).sum(axis=1)
+        new_rms = rnd.rms.update(raw_loss)
         loss = raw_loss.mean()
-        return loss, {'rnd_loss': loss, 'predict_z_mean': jnp.mean(pred), 'target_z_mean': jnp.mean(target)}
+        return loss, (new_rms, {'rnd_loss': loss, 'predict_z_mean': jnp.mean(pred), 'target_z_mean': jnp.mean(target)})
     
-    (loss, info), grads = jax.value_and_grad(rnd_loss_fn, has_aux=True)(rnd.params)
-    new_rnd = rnd.apply_gradients(grads=grads)
+    (loss, new_rms_and_info), grads = jax.value_and_grad(rnd_loss_fn, has_aux=True)(rnd.params)
+    new_rms, info = new_rms_and_info
+    new_rnd = rnd.apply_gradients(grads=grads).replace(rms=new_rms)
     return new_rnd, info
     
 
@@ -255,8 +301,7 @@ def _update_critic(
 
     # >>>>>>>>>>>>>>>> add intrisic reward >>>>>>>>>>>>>>>>>>>>>>>
     ext_reward = batch.rewards # task reward
-    pred, target = rnd.apply_fn(rnd.params, batch.next_observations, task_mask, batch.observations, batch.actions)
-    intrisic_reward = jnp.sum((pred - target)**2, axis=1)
+    intrisic_reward = rnd_bonus(rnd, batch, task_mask)
     reward = ext_coeff * ext_reward + int_coeff * intrisic_reward
     # <<<<<<<<<<<<<<<< add intrisic reward <<<<<<<<<<<<<<<<<<<<<<<
 

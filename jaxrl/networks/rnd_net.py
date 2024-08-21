@@ -60,6 +60,7 @@ class rnd_network(nn.Module):
         return phi_next_st
 
 class RND(nn.Module):
+    
     def setup(self):
         self.target_network = rnd_network()
         self.predict_network = Decoder_PRE()
