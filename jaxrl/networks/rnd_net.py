@@ -67,6 +67,6 @@ class RND(nn.Module):
         self.predict_network = Decoder_PRE()
     
     def __call__(self, next_observations: jnp.ndarray, task_mask: jnp.ndarray, observations: jnp.ndarray, actions: jnp.ndarray):
-        target = self.target_network(jnp.concatnate([observations, actions], -1))
+        target = self.target_network(jnp.concatenate([observations, actions], -1))
         pred = self.predict_network(jnp.concatenate([observations, actions], -1))
         return pred, jax.lax.stop_gradient(target)

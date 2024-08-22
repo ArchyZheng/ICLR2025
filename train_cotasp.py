@@ -164,13 +164,14 @@ def main(_):
             else:
                 action = agent.sample_actions(observation[np.newaxis], task_idx)
                 action = np.asarray(action, dtype=np.float32).flatten()
-
+            
             if idx == FLAGS.start_training:
                 observation_mean = replay_buffer.observations.mean(axis=0)
                 observation_std = replay_buffer.observations.std(axis=0)
                 action_mean = replay_buffer.actions.mean(axis=0)
                 action_std = replay_buffer.actions.std(axis=0)
                 agent.rnd = agent.rnd.replace(states_mean=observation_mean, states_std=observation_std, actions_mean=action_mean, actions_std=action_std)
+                agent.prefit_rnd(replay_buffer, batch_size=FLAGS.batch_size, iter_num=10000)
                 
             # action = env.action_space.sample()
             next_observation, reward, done, info = env.step(action)

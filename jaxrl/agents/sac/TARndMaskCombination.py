@@ -1,5 +1,7 @@
 import optax
 from jax.numpy import ndarray
+import wandb
+from jaxrl.datasets.replay_buffer import ReplayBuffer
 from numpy import ndarray
 from jaxrl.agents.sac.sac_learner import CoTASPLearner
 from jaxrl.networks.policies import ste_step_fn
@@ -173,6 +175,14 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         self.int_coeff = int_coeff
         self.old_task_id = -1
         self.current_parameter_info = {'frozen_parameter_number': None, 'inference_parameter_number': None, 'overlap_parameter_number': None, 'free_parameter_number': None}
+    
+    def prefit_rnd(self, replay_buffer: ReplayBuffer, batch_size: int, iter_num: int):
+        for i in range(iter_num):
+            batch = replay_buffer.sample(batch_size)
+            new_rnd, decoder_info = _update_decoder(batch, self.rnd, self.task_mask)
+            self.rnd = new_rnd
+            wandb.log({"prefit_rnd/rnd_loss": decoder_info['rnd_loss']}, step=i)
+        
     
     def start_task(self, task_id: int, description: str):
         super().start_task(task_id, description)
