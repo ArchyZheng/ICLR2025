@@ -38,6 +38,7 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
     stats = {}
     sum_return = 0.0
     sum_success = 0.0
+    sum_success_final = 0.0
     list_log_keys = ['return']
     
     # dummy inputs
@@ -47,12 +48,14 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
         for k in list_log_keys:
             stats[f'{task_i}-{env.name}/{k}'] = []
         successes = None
+        successes_final = None # if the task is success in the episode it will record as one
 
         if tadell:
             agent.select_actor(task_i)
 
         for _ in range(num_episodes):
             observation, done = env.reset(), False
+            flag_success = 0
             while not done:
                 
                 if naive_sac:
@@ -66,6 +69,8 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
                     action = np.asarray(action, dtype=np.float32).flatten()
 
                 observation, _, done, info = env.step(action)
+                if 'success' in info:
+                    flag_success += info['success'] 
 
             for k in list_log_keys:
                 stats[f'{task_i}-{env.name}/{k}'].append(info['episode'][k])
@@ -74,6 +79,11 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
                 if successes is None:
                     successes = 0.0
                 successes += info['success']
+            
+            if flag_success > 0.5:
+                if successes_final is None:
+                    successes_final = 0.0
+                successes_final += 1.0
 
         for k in list_log_keys:
             stats[f'{task_i}-{env.name}/{k}'] = np.mean(stats[f'{task_i}-{env.name}/{k}'])
@@ -81,6 +91,9 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
         if successes is not None:
             stats[f'{task_i}-{env.name}/success'] = successes / num_episodes
             sum_success += stats[f'{task_i}-{env.name}/success']
+        if successes_final is not None:
+            stats[f'{task_i}-{env.name}/success_final'] = successes_final / num_episodes
+            sum_success_final += stats[f'{task_i}-{env.name}/success_final']
 
         sum_return += stats[f'{task_i}-{env.name}/return']
 
@@ -88,5 +101,6 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
 
     stats['avg_return'] = sum_return / len(envs)
     stats['test/deterministic/average_success'] = sum_success / len(envs)
+    stats['test/deterministic/average_success_final'] = sum_success_final / len(envs)
 
     return stats
