@@ -146,12 +146,9 @@ def rnd_bonus(
     batch: Batch,
     task_mask: jax.Array
 ) -> jax.Array:
-    next_observations = normalize(batch.next_observations, rnd.states_mean, rnd.states_std)
-    observations = normalize(batch.observations, rnd.states_mean, rnd.states_std)
-    actions = normalize(batch.actions, rnd.actions_mean, rnd.actions_std)
-    pred, target = rnd.apply_fn(rnd.params, next_observations, task_mask, observations, actions)
+    pred, target = rnd.apply_fn(rnd.params, batch.next_observations, task_mask, batch.observations, batch.actions)
     std = ((pred - target) ** 2).std()
-    bonus = jnp.sum((pred - target)**2, axis=1) / std
+    bonus = jnp.sum((pred - target)**2, axis=1)
     return bonus
 
 
@@ -282,10 +279,10 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
 @jax.jit
 def _update_decoder(batch, rnd: RNDTrainState, task_mask):
     def rnd_loss_fn(params) -> Tuple[jnp.ndarray, InfoDict]:
-        next_observations = normalize(batch.next_observations, rnd.states_mean, rnd.states_std)
-        observations = normalize(batch.observations, rnd.states_mean, rnd.states_std)
-        actions = normalize(batch.actions, rnd.actions_mean, rnd.actions_std)
-        pred, target = rnd.apply_fn(params, next_observations, task_mask, observations, actions)
+        # next_observations = normalize(batch.next_observations, rnd.states_mean, rnd.states_std)
+        # observations = normalize(batch.observations, rnd.states_mean, rnd.states_std)
+        # actions = normalize(batch.actions, rnd.actions_mean, rnd.actions_std)
+        pred, target = rnd.apply_fn(params, batch.next_observations, task_mask, batch.observations, batch.actions)
         raw_loss = ((pred - target)**2).sum(axis=1)
         new_rms = rnd.rms.update(raw_loss)
         loss = raw_loss.mean()
