@@ -149,7 +149,7 @@ def rnd_bonus(
     actions = normalize(batch.actions, rnd.actions_mean, rnd.actions_std)
     pred, target = rnd.apply_fn(rnd.params, next_observations, task_mask, observations, actions)
     std = ((pred - target) ** 2).std()
-    bonus = jnp.sum((pred - target)**2, axis=1) / std
+    bonus = jnp.sum((pred - target)**2, axis=1)
     return bonus
 
 
