@@ -291,8 +291,31 @@ def _update_decoder(batch, rnd: RNDTrainState, task_mask):
     (loss, new_rms_and_info), grads = jax.value_and_grad(rnd_loss_fn, has_aux=True)(rnd.params)
     new_rms, info = new_rms_and_info
     new_rnd = rnd.apply_gradients(grads=grads).replace(rms=new_rms)
+    batch_info = batch_stats(batch)
+    info.update(batch_info)
     return new_rnd, info
-    
+
+def batch_stats(batch) -> utils_fn.Dict[str, jnp.ndarray]: 
+    """
+    This will return each action and observation dimension's mean and std
+    """
+    info = {}
+    observation_mean = jnp.mean(batch.observations, axis=0)
+    observation_std = jnp.std(batch.observations, axis=0)
+    action_mean = jnp.mean(batch.actions, axis=0)
+    action_std = jnp.std(batch.actions, axis=0)
+    next_observation_mean = jnp.mean(batch.next_observations, axis=0)
+    next_observation_std = jnp.std(batch.next_observations, axis=0)
+    for i in range(len(observation_mean)):
+        info[f'observation_mean_{i}'] = observation_mean[i]
+        info[f'observation_std_{i}'] = observation_std[i]
+        info[f'next_observation_mean_{i}'] = next_observation_mean[i]
+        info[f'next_observation_std_{i}'] = next_observation_std[i]
+    for i in range(len(action_mean)):
+        info[f'action_mean_{i}'] = action_mean[i]
+        info[f'action_std_{i}'] = action_std[i]
+    return info
+
 
 def _update_critic(
     rng: PRNGKey, task_id: int, actor: MPNTrainState, critic: TrainState, 

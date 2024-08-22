@@ -55,7 +55,7 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
 
         for _ in range(num_episodes):
             observation, done = env.reset(), False
-            flag_success = False
+            flag_success = 0
             while not done:
                 
                 if naive_sac:
@@ -69,8 +69,8 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
                     action = np.asarray(action, dtype=np.float32).flatten()
 
                 observation, _, done, info = env.step(action)
-                if 'success' in info and flag_success is False:
-                    flag_success = True
+                if 'success' in info:
+                    flag_success += info['success'] 
 
             for k in list_log_keys:
                 stats[f'{task_i}-{env.name}/{k}'].append(info['episode'][k])
@@ -80,7 +80,7 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
                     successes = 0.0
                 successes += info['success']
             
-            if flag_success == True:
+            if flag_success > 0.5:
                 if successes_final is None:
                     successes_final = 0.0
                 successes_final += 1.0
