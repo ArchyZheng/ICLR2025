@@ -144,9 +144,10 @@ def normalize(arr: jax.Array, mean: jax.Array, std: jax.Array, eps: float = 1e-8
 def rnd_bonus(
     rnd: RNDTrainState,
     batch: Batch,
-    task_mask: jax.Array
+    task_mask: jax.Array,
+    next_actions: jax.Array
 ) -> jax.Array:
-    pred, target = rnd.apply_fn(rnd.params, batch.next_observations, task_mask, batch.observations, batch.actions)
+    pred, target = rnd.apply_fn(rnd.params, batch.next_observations, next_actions)
     std = ((pred - target) ** 2).std()
     bonus = jnp.sum((pred - target)**2, axis=1)
     return bonus
@@ -159,7 +160,7 @@ class TARndMaskCombinationLearner(MaskCombinationLearner):
         rnd_module = RND()
         self.rnd = RNDTrainState.create(
             apply_fn=rnd_module.apply,
-            params=rnd_module.init(key, jnp.ones((1, 12)), jnp.ones((1, 4, 1024, 1)), jnp.ones((1, 12)), jnp.ones((1, 4))),
+            params=rnd_module.init(key, jnp.ones((1, 12)), jnp.ones((1, 4))),
             tx=optax.adam(1e-3),
             rms=RunningMeanStd.create(),
             states_mean=jnp.zeros((1, 12)),
@@ -282,7 +283,7 @@ def _update_decoder(batch, rnd: RNDTrainState, task_mask):
         # next_observations = normalize(batch.next_observations, rnd.states_mean, rnd.states_std)
         # observations = normalize(batch.observations, rnd.states_mean, rnd.states_std)
         # actions = normalize(batch.actions, rnd.actions_mean, rnd.actions_std)
-        pred, target = rnd.apply_fn(params, batch.next_observations, task_mask, batch.observations, batch.actions)
+        pred, target = rnd.apply_fn(params, batch.observations, batch.actions)
         raw_loss = ((pred - target)**2).sum(axis=1)
         new_rms = rnd.rms.update(raw_loss)
         loss = raw_loss.mean()
@@ -332,7 +333,7 @@ def _update_critic(
 
     # >>>>>>>>>>>>>>>> add intrisic reward >>>>>>>>>>>>>>>>>>>>>>>
     ext_reward = batch.rewards # task reward
-    intrisic_reward = rnd_bonus(rnd, batch, task_mask)
+    intrisic_reward = rnd_bonus(rnd, batch, task_mask, next_actions)
     reward = ext_coeff * ext_reward + int_coeff * intrisic_reward
     # <<<<<<<<<<<<<<<< add intrisic reward <<<<<<<<<<<<<<<<<<<<<<<
 
