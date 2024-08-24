@@ -30,6 +30,11 @@ TASK_SEQS = {
         {'task': "window-close-v1", 'hint': 'Push and close a window.'},
         {'task': "peg-unplug-side-v1", 'hint': 'Unplug a peg sideways.'},
     ],
+    "distillation": [
+        {'task': "hammer-v1", 'hint': 'Hammer a screw on the wall.'},
+        {'task': "push-wall-v1", 'hint': 'Bypass a wall and push a puck to a goal.'},
+        {'task': "faucet-close-v1", 'hint': 'Rotate the faucet clockwise.'},
+    ],
     "cw1-hammer": [
         "hammer-v1"
     ],

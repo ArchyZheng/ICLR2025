@@ -20,7 +20,7 @@ from jaxrl.agents.sac.sac_mask_combination import MaskCombinationLearner
 from continual_world import TASK_SEQS, get_single_env
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
+flags.DEFINE_string('env_name', 'distillation', 'Environment name.')
 flags.DEFINE_integer('seed', 110, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
@@ -42,7 +42,7 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "check repeatness", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "Distillation Research", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', False, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '~/rl-archy/Documents/PyCode/CoTASP/logs', 'Logging dir.')
@@ -161,7 +161,7 @@ def main(_):
         schedule = itertools.cycle([False]*FLAGS.theta_step + [True]*FLAGS.alpha_step)
         # reset environment
         observation, done = env.reset(), False
-        teahcer_stage = 0.5e6 
+        teahcer_stage = 0.6e6 
         for idx in range(FLAGS.max_step):
             if idx < teahcer_stage: #ANCHOR - teacher model part
                 if idx < FLAGS.start_training:
@@ -205,17 +205,6 @@ def main(_):
                     if idx % FLAGS.log_interval == 0:
                         for k, v in update_info.items():
                             wandb.log({f'teacher_stage/training/{k}': v, 'global_steps': total_env_steps})
-                if idx % FLAGS.eval_interval == 0:
-                    eval_stats = evaluate_cl(teacher, eval_envs, FLAGS.eval_episodes)
-
-                    for k, v in eval_stats.items():
-                        wandb.log({f'teacher_evaluation/{k}': v, 'global_steps': total_env_steps})
-
-                    # Update the log with collected data
-                    eval_stats['cl_method'] = algo
-                    eval_stats['x'] = total_env_steps
-                    eval_stats['steps_per_task'] = FLAGS.max_step
-                    log.update(eval_stats)
 
             else: #ANCHOR - student model part
                 action = teacher.sample_actions(observation[np.newaxis], task_idx)
@@ -249,17 +238,22 @@ def main(_):
                         for k, v in update_info.items():
                             wandb.log({f'student_stage/training/{k}': v, 'global_steps': total_env_steps})
                 # this will only accur in student stage
-                if idx % FLAGS.eval_interval == 0:
-                    eval_stats = evaluate_cl(agent, eval_envs, FLAGS.eval_episodes)
+            if idx % FLAGS.eval_interval == 0:
+                eval_stats = evaluate_cl(agent, eval_envs, FLAGS.eval_episodes)
 
-                    for k, v in eval_stats.items():
-                        wandb.log({f'student_evaluation/{k}': v, 'global_steps': total_env_steps})
+                for k, v in eval_stats.items():
+                    wandb.log({f'student_evaluation/{k}': v, 'global_steps': total_env_steps})
+                    
+                eval_stats = evaluate_cl(teacher, eval_envs, FLAGS.eval_episodes)
 
-                    # Update the log with collected data
-                    eval_stats['cl_method'] = algo
-                    eval_stats['x'] = total_env_steps
-                    eval_stats['steps_per_task'] = FLAGS.max_step
-                    log.update(eval_stats)
+                for k, v in eval_stats.items():
+                    wandb.log({f'teacher_evaluation/{k}': v, 'global_steps': total_env_steps})
+
+                # Update the log with collected data
+                eval_stats['cl_method'] = algo
+                eval_stats['x'] = total_env_steps
+                eval_stats['steps_per_task'] = FLAGS.max_step
+                log.update(eval_stats)
         '''
         Updating miscellaneous things
         '''
