@@ -1,7 +1,7 @@
 '''
 CONTINUAL TASK ALLOCATION IN META-POLICY NETWORK VIA SPARSE PROMPTING
 '''
-
+import copy
 import itertools
 import random
 import time
@@ -98,12 +98,20 @@ def main(_):
         randomization=FLAGS.env_type)
     if algo == 'cotasp':
         # agent = CoTASPLearner(
+        algo_kwargs_1 = copy.deepcopy(algo_kwargs)
         agent = MaskCombinationLearner(
             FLAGS.seed,
             temp_env.observation_space.sample()[np.newaxis],
             temp_env.action_space.sample()[np.newaxis], 
             len(seq_tasks),
             **algo_kwargs)
+
+        teacher = MaskCombinationLearner(
+            FLAGS.seed,
+            temp_env.observation_space.sample()[np.newaxis],
+            temp_env.action_space.sample()[np.newaxis], 
+            len(seq_tasks),
+            **algo_kwargs_1)
         del temp_env
     else:
         raise NotImplementedError()
@@ -124,6 +132,8 @@ def main(_):
         print(f'Learning on task {task_idx+1}: {dict_task["task"]} for {FLAGS.max_step} steps')
         # start the current task
         agent.start_task(task_idx, dict_task["hint"])
+
+        teacher.start_task(task_idx, dict_task["hint"])
         
         if task_idx > 0 and FLAGS.rnd_explore:
             '''
@@ -131,12 +141,12 @@ def main(_):
             '''
             for i in range(FLAGS.distill_steps):
                 batch = replay_buffer.sample(FLAGS.batch_size)
-                distill_info = agent.rand_net_distill(task_idx, batch)
+                distill_info = teacher.rand_net_distill(task_idx, batch)
                 
                 if i % (FLAGS.distill_steps // 10) == 0:
                     print(i, distill_info)
             # reset actor's optimizer
-            agent.reset_actor_optimizer()
+            teacher.reset_actor_optimizer()
 
         # set continual world environment
         env = get_single_env(
@@ -151,72 +161,112 @@ def main(_):
         schedule = itertools.cycle([False]*FLAGS.theta_step + [True]*FLAGS.alpha_step)
         # reset environment
         observation, done = env.reset(), False
+        teahcer_stage = 0.5e6 
         for idx in range(FLAGS.max_step):
-            if idx < FLAGS.start_training:
-                # initial exploration strategy proposed in ClonEX-SAC
-                if task_idx == 0:
-                    action = env.action_space.sample()
+            if idx < teahcer_stage: #ANCHOR - teacher model part
+                if idx < FLAGS.start_training:
+                    # initial exploration strategy proposed in ClonEX-SAC
+                    if task_idx == 0:
+                        action = env.action_space.sample()
+                    else:
+                        # uniform-previous strategy
+                        mask_id = np.random.choice(task_idx)
+                        action = teacher.sample_actions(observation[np.newaxis], mask_id)
+                        action = np.asarray(action, dtype=np.float32).flatten()
                 else:
-                    # uniform-previous strategy
-                    mask_id = np.random.choice(task_idx)
-                    action = agent.sample_actions(observation[np.newaxis], mask_id)
+                    action = teacher.sample_actions(observation[np.newaxis], task_idx)
                     action = np.asarray(action, dtype=np.float32).flatten()
+                next_observation, reward, done, info = env.step(action)
+                # counting total environment step
+                total_env_steps += 1
+                if not done or 'TimeLimit.truncated' in info:
+                    mask = 1.0
+                else:
+                    mask = 0.0
+                # only for meta-world
+                assert mask == 1.0
+                replay_buffer.insert(
+                    observation, action, reward, mask, float(done), next_observation
+                )
                 
-                # default initial exploration strategy
-                # action = env.action_space.sample()
-            else:
-                action = agent.sample_actions(observation[np.newaxis], task_idx)
-                action = np.asarray(action, dtype=np.float32).flatten()
-                
-            next_observation, reward, done, info = env.step(action)
-            # counting total environment step
-            total_env_steps += 1
+                # CRUCIAL step easy to overlook
+                observation = next_observation
 
-            if not done or 'TimeLimit.truncated' in info:
-                mask = 1.0
-            else:
-                mask = 0.0
-            # only for meta-world
-            assert mask == 1.0
-
-            replay_buffer.insert(
-                observation, action, reward, mask, float(done), next_observation
-            )
-            
-            # CRUCIAL step easy to overlook
-            observation = next_observation
-
-            if done:
-                # EPISODIC ending
-                observation, done = env.reset(), False
-                for k, v in info['episode'].items():
-                    wandb.log({f'training/{k}': v, 'global_steps': total_env_steps})
-
-            if (idx >= FLAGS.start_training) and (idx % FLAGS.updates_per_step == 0):
-                for _ in range(FLAGS.updates_per_step):
-                    batch = replay_buffer.sample(FLAGS.batch_size)
-                    update_info = agent.update(task_idx, batch, next(schedule))
-                if idx % FLAGS.log_interval == 0:
-                    for k, v in update_info.items():
+                if done:
+                    # EPISODIC ending
+                    observation, done = env.reset(), False
+                    for k, v in info['episode'].items():
                         wandb.log({f'training/{k}': v, 'global_steps': total_env_steps})
 
-            if idx % FLAGS.eval_interval == 0:
-                eval_stats = evaluate_cl(agent, eval_envs, FLAGS.eval_episodes)
+                if (idx >= FLAGS.start_training) and (idx % FLAGS.updates_per_step == 0):
+                    for _ in range(FLAGS.updates_per_step):
+                        batch = replay_buffer.sample(FLAGS.batch_size)
+                        update_info = teacher.update(task_idx, batch, next(schedule))
+                    if idx % FLAGS.log_interval == 0:
+                        for k, v in update_info.items():
+                            wandb.log({f'teacher_stage/training/{k}': v, 'global_steps': total_env_steps})
+                if idx % FLAGS.eval_interval == 0:
+                    eval_stats = evaluate_cl(teacher, eval_envs, FLAGS.eval_episodes)
 
-                for k, v in eval_stats.items():
-                    wandb.log({f'evaluation/{k}': v, 'global_steps': total_env_steps})
+                    for k, v in eval_stats.items():
+                        wandb.log({f'teacher_evaluation/{k}': v, 'global_steps': total_env_steps})
 
-                # Update the log with collected data
-                eval_stats['cl_method'] = algo
-                eval_stats['x'] = total_env_steps
-                eval_stats['steps_per_task'] = FLAGS.max_step
-                log.update(eval_stats)
-    
+                    # Update the log with collected data
+                    eval_stats['cl_method'] = algo
+                    eval_stats['x'] = total_env_steps
+                    eval_stats['steps_per_task'] = FLAGS.max_step
+                    log.update(eval_stats)
+
+            else: #ANCHOR - student model part
+                action = teacher.sample_actions(observation[np.newaxis], task_idx)
+                action = np.asarray(action, dtype=np.float32).flatten()
+                next_observation, reward, done, info = env.step(action)
+                # counting total environment step
+                total_env_steps += 1
+                if not done or 'TimeLimit.truncated' in info:
+                    mask = 1.0
+                else:
+                    mask = 0.0
+                # only for meta-world
+                assert mask == 1.0
+                replay_buffer.insert(
+                    observation, action, reward, mask, float(done), next_observation
+                )
+                # CRUCIAL step easy to overlook
+                observation = next_observation
+
+                if done:
+                    # EPISODIC ending
+                    observation, done = env.reset(), False
+                    for k, v in info['episode'].items():
+                        wandb.log({f'training/{k}': v, 'global_steps': total_env_steps})
+
+                if (idx >= FLAGS.start_training) and (idx % FLAGS.updates_per_step == 0):
+                    for _ in range(FLAGS.updates_per_step):
+                        batch = replay_buffer.sample(FLAGS.batch_size)
+                        update_info = agent.update(task_idx, batch, next(schedule))
+                    if idx % FLAGS.log_interval == 0:
+                        for k, v in update_info.items():
+                            wandb.log({f'student_stage/training/{k}': v, 'global_steps': total_env_steps})
+                # this will only accur in student stage
+                if idx % FLAGS.eval_interval == 0:
+                    eval_stats = evaluate_cl(agent, eval_envs, FLAGS.eval_episodes)
+
+                    for k, v in eval_stats.items():
+                        wandb.log({f'student_evaluation/{k}': v, 'global_steps': total_env_steps})
+
+                    # Update the log with collected data
+                    eval_stats['cl_method'] = algo
+                    eval_stats['x'] = total_env_steps
+                    eval_stats['steps_per_task'] = FLAGS.max_step
+                    log.update(eval_stats)
         '''
         Updating miscellaneous things
         '''
         print('End of the current task')
         dict_stats = agent.end_task(task_idx, save_policy_dir, save_dict_dir)
+        teacher.end_task(task_idx, save_policy_dir, save_dict_dir)
+        
 
     # save log data
     log.save()
