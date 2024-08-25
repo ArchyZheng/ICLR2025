@@ -16,7 +16,7 @@ from jaxrl.datasets import ReplayBuffer
 from jaxrl.evaluation import evaluate_cl
 from jaxrl.utils import Logger
 from jaxrl.agents.sac.sac_learner import CoTASPLearner
-from jaxrl.agents.sac.sac_mask_combination import MaskCombinationLearner
+from jaxrl.agents.sac.sac_mask_combination import MaskCombinationLearner, TeacherLearner
 from continual_world import TASK_SEQS, get_single_env
 
 FLAGS = flags.FLAGS
@@ -105,8 +105,11 @@ def main(_):
             temp_env.action_space.sample()[np.newaxis], 
             len(seq_tasks),
             **algo_kwargs)
-
-        teacher = MaskCombinationLearner(
+        # use a stronger teacher model which can use fully parameter of the network and don't freeze any parameter
+        algo_kwargs_1['dict_configs'] = algo_kwargs_1['dict_configs_fixed']
+        algo_kwargs_1.pop('dict_configs_fixed')
+        algo_kwargs_1.pop('dict_configs_random')
+        teacher = TeacherLearner(
             FLAGS.seed,
             temp_env.observation_space.sample()[np.newaxis],
             temp_env.action_space.sample()[np.newaxis], 
@@ -260,7 +263,6 @@ def main(_):
         print('End of the current task')
         dict_stats = agent.end_task(task_idx, save_policy_dir, save_dict_dir)
         teacher.end_task(task_idx, save_policy_dir, save_dict_dir)
-        
 
     # save log data
     log.save()
