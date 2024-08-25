@@ -468,7 +468,6 @@ class CoTASPLearner(SACLearner):
         actor_configs['action_dim'] = action_dim
         actor_def = policies.MetaPolicy(**actor_configs)
         actor_params = FrozenDict(actor_def.init(actor_key, observations, jnp.array([0])).pop('params'))
-        self.teacher_params_init = actor_params
         actor = MPNTrainState.create(
             apply_fn=actor_def.apply,
             params=actor_params,
