@@ -200,9 +200,9 @@ class MetaPolicy(nn.Module):
     def setup(self):
         self.backbones = [nn.Dense(hidn, kernel_init=default_init()) \
             for hidn in self.hidden_dims]
-        self.embeds_bb = [nn.Embed(self.task_num, hidn, embedding_init=default_init()) \
+        self.embeds_bb = [nn.Embed(self.task_num, hidn, embedding_init=nn.initializers.constant(5)) \
             for hidn in self.hidden_dims]
-        self.random_embeds_bb = [nn.Embed(self.task_num, hidn, embedding_init=default_init()) \
+        self.random_embeds_bb = [nn.Embed(self.task_num, hidn, embedding_init=nn.initializers.constant(5)) \
             for hidn in self.hidden_dims]
         
         

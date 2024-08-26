@@ -1,4 +1,5 @@
 from jax.numpy import ndarray
+import jax
 import jax.numpy as jnp
 from jaxrl.agents.sac.sac_learner import CoTASPLearner
 # from sac_learner import CoTASPLearner
@@ -62,9 +63,14 @@ class TeacherLearner(CoTASPLearner):
         super().__init__(seed, observations, actions, task_num, load_policy_dir, load_dict_dir, update_dict, update_coef, dict_configs, pi_opt_configs, q_opt_configs, t_opt_configs, actor_configs, critic_configs, tau, discount, target_update_period, target_entropy, init_temperature) 
     
     def start_task(self, task_id: int, description: str):
-        # self.actor = self.actor.replace(params=self.teacher_params_init)
+        # TODO: reset the actor parameters
+        # self.rng, key = jax.random.split(self.rng)
+        # new_parameters = FrozenDict(self.actor_def.init(key, self.dummy_observations, jnp.array([0])).pop('params'))
+        # self.actor = self.actor.replace(params=new_parameters)
         return
     
     def end_task(self, task_id: int, save_actor_dir: str, save_dict_dir: str):
+        self.step = 0
+        self.reset_agent()
         return 
     
