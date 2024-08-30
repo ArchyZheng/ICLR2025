@@ -3,10 +3,10 @@ actor_configs:
   clip_mean: 1.0
   final_fc_init_scale: 1.0e-4
   hidden_dims: !!python/tuple
-  - 1024
-  - 1024
-  - 1024
-  - 1024
+  - 256
+  - 256
+  - 256
+  - 256
   name_activation: leaky_relu
   state_dependent_std: true
   use_layer_norm: true
