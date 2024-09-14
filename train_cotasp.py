@@ -48,14 +48,14 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "FG MASK + input sensitivity", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "debug", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', True, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '~/rl-archy/Documents/PyCode/CoTASP/logs', 'Logging dir.')
 
 flags.DEFINE_integer('calculate_layer_sensitivity_interval', int(8e4), 'calculate the layer sensitivity every x steps')
 flags.DEFINE_integer('evaluation_batch_size', int(1e3), "the batch size for evaluation")
-flags.DEFINE_float('layer_neuron_threshold', 0.6, 'the threshold to reset the parameters')
+flags.DEFINE_float('layer_neuron_threshold', 0.8, 'the threshold to reset the parameters')
 flags.DEFINE_integer('stop_reset_after_steps', int(8e5), 'stop reset once the steps reach this value')
 
 
@@ -136,9 +136,6 @@ def main(_):
         print(f'Learning on task {task_idx+1}: {dict_task["task"]} for {FLAGS.max_step} steps')
         # start the current task
         agent.start_task(task_idx, dict_task["hint"])
-        # >>>>>>>>>>>>>>>>>>>> store the parameter before learning the new task >>>>>>>>>>>>>>>
-        temp_params = agent.actor.params.copy() # NOTE: store the parameter before learning the new task
-        # <<<<<<<<<<<<<<<<<<<< store the parameter before learning the new task <<<<<<<<<<<<<<<
         
         if task_idx > 0 and FLAGS.rnd_explore:
             '''
@@ -152,7 +149,23 @@ def main(_):
                     print(i, distill_info)
             # reset actor's optimizer
             agent.reset_actor_optimizer()
+        # >>>>>>>>>>>>>>>>>>>> load the 4-th task model >>>>>>>>>>>>>>>
+        check_point_path = 'stored_agent_and_cumul_masks_and_grad_masks/330/3/actor.pkl'
+        agent.actor = agent.actor.load(check_point_path)
+        model_task_id = 4
+        dict_task = seq_tasks[model_task_id]
+        eval_envs = []
+        eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
+        with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/cumul_masks.pkl', 'rb') as f:
+            agent.cumul_masks = pickle.load(f)
+        with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/param_masks.pkl', 'rb') as f:
+            agent.param_masks = pickle.load(f)
+        task_idx = model_task_id
+        # >>>>>>>>>>>>>>>>>>>> store the parameter before learning the new task >>>>>>>>>>>>>>>
+        temp_params = agent.actor.params.copy() # NOTE: store the parameter before learning the new task
+        # <<<<<<<<<<<<<<<<<<<< store the parameter before learning the new task <<<<<<<<<<<<<<<
 
+        # <<<<<<<<<<<<<<<<<<<< load the 4-th task model <<<<<<<<<<<<<<<
         # set continual world environment
         env = get_single_env(
             dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type, 
@@ -262,6 +275,37 @@ def main(_):
                 })
                 available_indices = get_available_indices(info)
                 reset_params = reset_params_four_layers(agent.actor, temp_params, each_layer_reset_indices, available_indices)
+                # log reset params numbers
+                reset_diff = tree_map(lambda x, y: x - y, reset_params, agent.actor.params)
+                layer_name = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
+                total_reset_params = 0
+                total_params = 0
+                for i, layer_name in enumerate(layer_name):
+                    if layer_name == 'backbones_0':
+                        total_params_to_reset = 12 * each_layer_reset_indices[layer_name].size # which will invlove some frozen parameters
+                        pre_number = available_indices[layer_name].size
+                    else:
+                        total_params_to_reset = pre_number * each_layer_reset_indices[layer_name].size
+                        pre_number = available_indices[layer_name].size
+                    reset_params_number = reset_diff[layer_name]['kernel'].flatten().astype(bool).astype(int).sum()
+                    total_reset_params += reset_params_number
+                    total_params += total_params_to_reset
+                    wandb.log({
+                        f"reset_params/{layer_name}_total": total_params_to_reset,
+                        f"reset_params/{layer_name}_reset_number": reset_params_number,
+                        f"reset_params/{layer_name}_reset_percentage": (reset_params_number / total_params_to_reset) * 100,
+                        'global_steps': total_env_steps
+                    })
+                
+                # Log the average reset parameters and total reset numbers
+                wandb.log({
+                    "reset_params/total_reset_number": total_reset_params,
+                    "reset_params/total_params": total_params,
+                    "reset_params/total_reset_percentage": (total_reset_params / total_params) * 100,
+                    'global_steps': total_env_steps
+                })
+
+                    
                 agent.actor = agent.actor.replace(params=reset_params)
             # <<<<<<<<<<<<<<<<<<<< calculate the layer sensitivity <<<<<<<<<<<<<<<
     
@@ -271,23 +315,23 @@ def main(_):
         print('End of the current task')
         dict_stats = agent.end_task(task_idx, save_policy_dir, save_dict_dir)
         # >>>>>>>>>>>>>>>>>>>> restore the agent and cumul_masks and grad_masks >>>>>>>>>>>>>>>
-        store_folder_name = f'stored_agent_and_cumul_masks_and_grad_masks'
-        agent.actor.save(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/actor.pkl')
+        # store_folder_name = f'stored_agent_and_cumul_masks_and_grad_masks'
+        # agent.actor.save(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/actor.pkl')
         
-        # Save cumul_masks
-        with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'wb') as f:
-            pickle.dump(agent.cumul_masks, f)
+        # # Save cumul_masks
+        # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'wb') as f:
+        #     pickle.dump(agent.cumul_masks, f)
         
-        # # Restore cumul_masks
-        # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'rb') as f:
-        #     loaded_cumul_masks = pickle.load(f)
+        # # # Restore cumul_masks
+        # # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'rb') as f:
+        # #     loaded_cumul_masks = pickle.load(f)
         
-        with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'wb') as f:
-            pickle.dump(agent.param_masks, f)
+        # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'wb') as f:
+        #     pickle.dump(agent.param_masks, f)
 
-        # # Restore agent.param_masks
-        # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'rb') as f:
-        #     loaded_param_masks_dict = pickle.load(f)
+        # # # Restore agent.param_masks
+        # # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'rb') as f:
+        # #     loaded_param_masks_dict = pickle.load(f)
         # <<<<<<<<<<<<<<<<<<<< restore the agent and cumul_masks and grad_masks <<<<<<<<<<<<<<<
 
     # save log data
@@ -344,13 +388,13 @@ def get_new_params_by_layer(actor, temp_params, reset_indices, layer_name, avail
     return params
 
 def reset_params_four_layers(actor, temp_params, reset_indices, available_indices):
-    temp_params = unfreeze(temp_params)
-    layer_name = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
-    for layer_name in layer_name:
+    new_params = unfreeze(actor.params)
+    layer_name_list = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
+    for layer_name in layer_name_list:
         if reset_indices[layer_name].size > 0:
             new_layer_params = get_new_params_by_layer(actor, temp_params, reset_indices, layer_name, available_indices)
-            temp_params[layer_name]['kernel'] = new_layer_params
-    return FrozenDict(temp_params)
+            new_params[layer_name]['kernel'] = new_layer_params
+    return FrozenDict(new_params)
 
 if __name__ == '__main__':
     app.run(main)
