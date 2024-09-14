@@ -45,7 +45,7 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
     # dummy_obs = jnp.ones((128, 12))
 
     for task_i, env in enumerate(envs):
-        task_i = 4
+        # task_i = 4
         for k in list_log_keys:
             stats[f'{task_i}-{env.name}/{k}'] = []
         successes = None
