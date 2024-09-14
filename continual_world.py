@@ -31,7 +31,7 @@ TASK_SEQS = {
         {'task': "peg-unplug-side-v1", 'hint': 'Unplug a peg sideways.'},
     ],
     "cw1-hammer": [
-        "hammer-v1"
+        {'task': "hammer-v1", 'hint': 'Hammer a screw on the wall.'},
     ],
     "cw1-push-back": [
         "push-back-v1"

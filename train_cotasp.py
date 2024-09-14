@@ -21,10 +21,13 @@ from continual_world import TASK_SEQS, get_single_env
 import jax.numpy as jnp
 from jax.tree_util import tree_map
 from flax.core import unfreeze, FrozenDict
+from functools import partial
+from jaxrl.agents.sac.sac_learner import MPNTrainState
+import pickle
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
-flags.DEFINE_integer('seed', 110, 'Random seed.')
+flags.DEFINE_integer('seed', 330, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
 flags.DEFINE_string('env_type', 'random_init_all', 'The type of env is either deterministic or random_init_all')
@@ -45,14 +48,15 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "check repeatness", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "FG MASK + input sensitivity", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
-flags.DEFINE_boolean('save_checkpoint', False, 'Save meta-policy network parameters')
+flags.DEFINE_boolean('save_checkpoint', True, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '~/rl-archy/Documents/PyCode/CoTASP/logs', 'Logging dir.')
 
 flags.DEFINE_integer('calculate_layer_sensitivity_interval', int(8e4), 'calculate the layer sensitivity every x steps')
 flags.DEFINE_integer('evaluation_batch_size', int(1e3), "the batch size for evaluation")
-flags.DEFINE_float('layer_neuron_threshold', 0.4, 'the threshold to reset the parameters')
+flags.DEFINE_float('layer_neuron_threshold', 0.6, 'the threshold to reset the parameters')
+flags.DEFINE_integer('stop_reset_after_steps', int(8e5), 'stop reset once the steps reach this value')
 
 
 # YAML file path to cotasp's hyperparameter configuration
@@ -133,7 +137,7 @@ def main(_):
         # start the current task
         agent.start_task(task_idx, dict_task["hint"])
         # >>>>>>>>>>>>>>>>>>>> store the parameter before learning the new task >>>>>>>>>>>>>>>
-        temp_params = agent.get_params() # NOTE: store the parameter before learning the new task
+        temp_params = agent.actor.params.copy() # NOTE: store the parameter before learning the new task
         # <<<<<<<<<<<<<<<<<<<< store the parameter before learning the new task <<<<<<<<<<<<<<<
         
         if task_idx > 0 and FLAGS.rnd_explore:
@@ -228,12 +232,13 @@ def main(_):
                 eval_stats['steps_per_task'] = FLAGS.max_step
                 log.update(eval_stats)
             # >>>>>>>>>>>>>>>>>>>> calculate the layer sensitivity <<<<<<<<<<<<<<<
-            if idx % FLAGS.calculate_layer_sensitivity_interval == 0 and idx > 0:
+            if idx % FLAGS.calculate_layer_sensitivity_interval == 0 and idx > 0 and idx < FLAGS.stop_reset_after_steps:
                 batch = evaluation_buffer.sample(FLAGS.evaluation_batch_size)
                 temp_observations = jnp.array(batch.observations)
                 # dormant, info = calculate_layer_neuron_dormant(temp_observations, agent.actor, task_idx)
                 # layer_neuron_difference = get_each_layer_neuron_difference(dormant, info)
-                delta_y, delta_mean, info = calculate_layer_neuron(temp_observations, agent.actor, task_idx)
+                agent.actor_with_intermediate = agent.actor_with_intermediate.replace(params=agent.actor.params)
+                delta_y, delta_mean, info = calculate_layer_neuron(temp_observations, agent.actor_with_intermediate, task_idx)
                 layer_neuron_difference = get_each_layer_neuron_difference(delta_y,info)
                 each_layer_reset_indices = get_each_layer_reset_indices(layer_neuron_difference, threshold=FLAGS.layer_neuron_threshold) # this function will indicate the indices of neurons to reset of each layer
                 total_reset_neurons = 0
@@ -265,13 +270,29 @@ def main(_):
         '''
         print('End of the current task')
         dict_stats = agent.end_task(task_idx, save_policy_dir, save_dict_dir)
+        # >>>>>>>>>>>>>>>>>>>> restore the agent and cumul_masks and grad_masks >>>>>>>>>>>>>>>
+        store_folder_name = f'stored_agent_and_cumul_masks_and_grad_masks'
+        agent.actor.save(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/actor.pkl')
+        
+        # Save cumul_masks
+        with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'wb') as f:
+            pickle.dump(agent.cumul_masks, f)
+        
+        # # Restore cumul_masks
+        # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'rb') as f:
+        #     loaded_cumul_masks = pickle.load(f)
+        
+        with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'wb') as f:
+            pickle.dump(agent.param_masks, f)
+
+        # # Restore agent.param_masks
+        # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'rb') as f:
+        #     loaded_param_masks_dict = pickle.load(f)
+        # <<<<<<<<<<<<<<<<<<<< restore the agent and cumul_masks and grad_masks <<<<<<<<<<<<<<<
 
     # save log data
     log.save()
     np.save(f'{wandb.run.dir}/dict_stats.npy', dict_stats)
-
-if __name__ == '__main__':
-    app.run(main)
 
 def calculate_layer_neuron(observations, actor, task_id):
     info, intermediate = actor(observations, jnp.array([task_id]))
@@ -330,3 +351,6 @@ def reset_params_four_layers(actor, temp_params, reset_indices, available_indice
             new_layer_params = get_new_params_by_layer(actor, temp_params, reset_indices, layer_name, available_indices)
             temp_params[layer_name]['kernel'] = new_layer_params
     return FrozenDict(temp_params)
+
+if __name__ == '__main__':
+    app.run(main)
