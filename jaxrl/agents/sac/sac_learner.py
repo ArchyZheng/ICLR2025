@@ -131,6 +131,8 @@ class SACLearner(object):
         self.target_critic = target_critic
         self.temp = temp
         self.rng = rng
+        self.critic_def = critic_def
+        self.tc_def = tc_def
 
         # for reset models
         self.dummy_a = actions
@@ -520,6 +522,10 @@ class CoTASPLearner(SACLearner):
         filter_rep = lambda l, _: l.name is not None and ('backbones' in l.name or 'mean_layer' in l.name)
         actor_apply = functools.partial(actor_def.apply, capture_intermediates=filter_rep, mutable=["intermediates"])
         self.actor_with_intermediate = MPNTrainState.create(apply_fn=actor_apply, params=actor_params, tx=utils_fn.set_optimizer(**pi_opt_configs))
+
+        filter_critic = lambda l, _: l.name is not None and ('VmapCritic' in l.name)
+        critic_apply = functools.partial(self.critic_def.apply, capture_intermediates=filter_critic, mutable=["intermediates"])
+        self.critic_with_intermediate = TrainState.create(apply_fn=critic_apply, params=self.critic.params, tx=utils_fn.set_optimizer(**q_opt_configs))
 
     def start_task(self, task_id: int, description: str):
         task_e = self.task_encoder.encode(description)[np.newaxis, :]

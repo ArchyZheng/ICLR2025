@@ -26,9 +26,9 @@ from jaxrl.agents.sac.sac_learner import MPNTrainState
 import pickle
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('env_name', 'cw1-stick-pull', 'Environment name.')
-# flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
-flags.DEFINE_integer('seed', 110, 'Random seed.')
+# flags.DEFINE_string('env_name', 'cw1-stick-pull', 'Environment name.')
+flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
+flags.DEFINE_integer('seed', 330, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
 flags.DEFINE_string('env_type', 'random_init_all', 'The type of env is either deterministic or random_init_all')
@@ -49,7 +49,7 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "debug", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "set from stored checkpoint", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', True, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '~/rl-archy/Documents/PyCode/CoTASP/logs', 'Logging dir.')
@@ -151,17 +151,17 @@ def main(_):
             # reset actor's optimizer
             agent.reset_actor_optimizer()
         # >>>>>>>>>>>>>>>>>>>> load the 4-th task model >>>>>>>>>>>>>>>
-        # check_point_path = 'stored_agent_and_cumul_masks_and_grad_masks/330/3/actor.pkl'
-        # agent.actor = agent.actor.load(check_point_path)
-        # model_task_id = 4
-        # dict_task = seq_tasks[model_task_id]
-        # eval_envs = []
-        # eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
-        # with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/cumul_masks.pkl', 'rb') as f:
-        #     agent.cumul_masks = pickle.load(f)
-        # with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/param_masks.pkl', 'rb') as f:
-        #     agent.param_masks = pickle.load(f)
-        # task_idx = model_task_id
+        check_point_path = 'stored_agent_and_cumul_masks_and_grad_masks/220/3/actor.pkl'
+        agent.actor = agent.actor.load(check_point_path)
+        model_task_id = 4
+        dict_task = seq_tasks[model_task_id]
+        eval_envs = []
+        eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
+        with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/cumul_masks.pkl', 'rb') as f:
+            agent.cumul_masks = pickle.load(f)
+        with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/param_masks.pkl', 'rb') as f:
+            agent.param_masks = pickle.load(f)
+        task_idx = model_task_id
         # >>>>>>>>>>>>>>>>>>>> store the parameter before learning the new task >>>>>>>>>>>>>>>
         temp_params = agent.actor.params.copy() # NOTE: store the parameter before learning the new task
         # <<<<<<<<<<<<<<<<<<<< store the parameter before learning the new task <<<<<<<<<<<<<<<
@@ -183,6 +183,16 @@ def main(_):
         schedule = itertools.cycle([False]*FLAGS.theta_step + [True]*FLAGS.alpha_step)
         # reset environment
         observation, done = env.reset(), False
+
+        # _, info = agent.actor(observation.reshape(-1, 12), jnp.array([task_idx]))
+
+        # forward_mask = frozen_neuron_mask(agent.cumul_masks, info)
+        # layer_name_list = ['embeds_bb0', 'embeds_bb1', 'embeds_bb2', 'embeds_bb3']
+
+        # for layer_name in layer_name_list:
+        #     agent.actor.params[layer_name]
+        # free_mask = tree_map(lambda x, y: x - y, info['masks'], forward_mask)
+
         for idx in range(FLAGS.max_step):
             if idx < FLAGS.start_training:
                 # initial exploration strategy proposed in ClonEX-SAC
@@ -249,12 +259,16 @@ def main(_):
             if idx % FLAGS.calculate_layer_sensitivity_interval == 0 and idx > 0 and idx < FLAGS.stop_reset_after_steps:
                 batch = evaluation_buffer.sample(FLAGS.evaluation_batch_size)
                 temp_observations = jnp.array(batch.observations)
+                temp_actions = jnp.array(batch.actions)
                 # dormant, info = calculate_layer_neuron_dormant(temp_observations, agent.actor, task_idx)
                 # layer_neuron_difference = get_each_layer_neuron_difference(dormant, info)
                 agent.actor_with_intermediate = agent.actor_with_intermediate.replace(params=agent.actor.params)
+                # agent.critic_with_intermediate = agent.critic_with_intermediate.replace(params=agent.critic.params)
+                # delta_q = calculate_layer_neuron(temp_observations, temp_actions, agent.critic_with_intermediate)
                 delta_y, info = calculate_layer_neuron(temp_observations, agent.actor_with_intermediate, task_idx)
                 layer_neuron_difference = get_each_layer_neuron_difference(delta_y,info)
                 each_layer_reset_indices = get_each_layer_reset_indices(layer_neuron_difference, threshold=FLAGS.layer_neuron_threshold) # this function will indicate the indices of neurons to reset of each layer
+                # each_layer_reset_indices = lowest_k_neuron(layer_neuron_difference, k=10)
                 total_reset_neurons = 0
                 total_neurons = 0
                 for layer_name, indices in each_layer_reset_indices.items(): # log some from neuron view
@@ -315,6 +329,7 @@ def main(_):
         Updating miscellaneous things
         '''
         print('End of the current task')
+        break
         dict_stats = agent.end_task(task_idx, save_policy_dir, save_dict_dir)
         # >>>>>>>>>>>>>>>>>>>> restore the agent and cumul_masks and grad_masks >>>>>>>>>>>>>>>
         # store_folder_name = f'stored_agent_and_cumul_masks_and_grad_masks'
@@ -408,6 +423,34 @@ def reset_params_four_layers(actor, temp_params, reset_indices, available_indice
             new_layer_params = get_new_params_by_layer(actor, temp_params, reset_indices, layer_name, available_indices)
             new_params[layer_name]['kernel'] = new_layer_params
     return FrozenDict(new_params)
+
+def lowest_k_neuron(layer_neuron_difference, k=10):
+    """
+    return lowest k neurons
+    """
+    each_layer_reset_indices = {}
+    layer_name_list = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
+
+    for layer_name in layer_name_list:
+        layer_diff = layer_neuron_difference[layer_name]
+        top_k_indices = jnp.argsort(layer_diff)[:k]
+        each_layer_reset_indices[layer_name] = top_k_indices
+    
+    # mean layer will reset 1 neuron
+    layer_name = 'mean_layer'
+    layer_diff = layer_neuron_difference[layer_name]
+    top_k_indices = jnp.argsort(layer_diff)[:1]
+    each_layer_reset_indices[layer_name] = top_k_indices
+    return each_layer_reset_indices
+
+def frozen_neuron_mask(culmu_mask, info):
+    layer_name_list = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
+    output = {}
+
+    for layer_name in layer_name_list:
+        overlap_mask = tree_map(lambda x, y: x * y, info['masks'][layer_name][0], culmu_mask[layer_name][0])
+        output[layer_name] = overlap_mask
+    return output
 
 if __name__ == '__main__':
     app.run(main)
