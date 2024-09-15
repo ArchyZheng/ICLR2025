@@ -517,7 +517,7 @@ class CoTASPLearner(SACLearner):
         self.task_embeddings = []
         self.task_encoder = SentenceTransformer('all-MiniLM-L12-v2')
         self.actor_def = actor_def
-        filter_rep = lambda l, _: l.name is not None and 'backbones' in l.name
+        filter_rep = lambda l, _: l.name is not None and ('backbones' in l.name or 'mean_layer' in l.name)
         actor_apply = functools.partial(actor_def.apply, capture_intermediates=filter_rep, mutable=["intermediates"])
         self.actor_with_intermediate = MPNTrainState.create(apply_fn=actor_apply, params=actor_params, tx=utils_fn.set_optimizer(**pi_opt_configs))
 

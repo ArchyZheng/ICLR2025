@@ -27,7 +27,8 @@ import pickle
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('env_name', 'cw1-stick-pull', 'Environment name.')
-flags.DEFINE_integer('seed', 330, 'Random seed.')
+# flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
+flags.DEFINE_integer('seed', 110, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
 flags.DEFINE_string('env_type', 'random_init_all', 'The type of env is either deterministic or random_init_all')
@@ -55,7 +56,7 @@ flags.DEFINE_string('save_dir', '~/rl-archy/Documents/PyCode/CoTASP/logs', 'Logg
 
 flags.DEFINE_integer('calculate_layer_sensitivity_interval', int(8e4), 'calculate the layer sensitivity every x steps')
 flags.DEFINE_integer('evaluation_batch_size', int(1e3), "the batch size for evaluation")
-flags.DEFINE_float('layer_neuron_threshold', 0.8, 'the threshold to reset the parameters')
+flags.DEFINE_float('layer_neuron_threshold', 0.6, 'the threshold to reset the parameters')
 flags.DEFINE_integer('stop_reset_after_steps', int(8e5), 'stop reset once the steps reach this value')
 
 
@@ -251,12 +252,12 @@ def main(_):
                 # dormant, info = calculate_layer_neuron_dormant(temp_observations, agent.actor, task_idx)
                 # layer_neuron_difference = get_each_layer_neuron_difference(dormant, info)
                 agent.actor_with_intermediate = agent.actor_with_intermediate.replace(params=agent.actor.params)
-                delta_y, delta_mean, info = calculate_layer_neuron(temp_observations, agent.actor_with_intermediate, task_idx)
+                delta_y, info = calculate_layer_neuron(temp_observations, agent.actor_with_intermediate, task_idx)
                 layer_neuron_difference = get_each_layer_neuron_difference(delta_y,info)
                 each_layer_reset_indices = get_each_layer_reset_indices(layer_neuron_difference, threshold=FLAGS.layer_neuron_threshold) # this function will indicate the indices of neurons to reset of each layer
                 total_reset_neurons = 0
                 total_neurons = 0
-                for layer_name, indices in each_layer_reset_indices.items():
+                for layer_name, indices in each_layer_reset_indices.items(): # log some from neuron view
                     layer_total_neurons = info['masks'][layer_name][0].sum()
                     reset_percentage = (len(indices) / layer_total_neurons) * 100
                     total_reset_neurons += len(indices)
@@ -277,10 +278,10 @@ def main(_):
                 reset_params = reset_params_four_layers(agent.actor, temp_params, each_layer_reset_indices, available_indices)
                 # log reset params numbers
                 reset_diff = tree_map(lambda x, y: x - y, reset_params, agent.actor.params)
-                layer_name = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
+                layer_name_list = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3', 'mean_layer']
                 total_reset_params = 0
                 total_params = 0
-                for i, layer_name in enumerate(layer_name):
+                for i, layer_name in enumerate(layer_name_list): # log some from parameter view
                     if layer_name == 'backbones_0':
                         total_params_to_reset = 12 * each_layer_reset_indices[layer_name].size # which will invlove some frozen parameters
                         pre_number = available_indices[layer_name].size
@@ -307,6 +308,7 @@ def main(_):
 
                     
                 agent.actor = agent.actor.replace(params=reset_params)
+                agent.reset_actor_optimizer()
             # <<<<<<<<<<<<<<<<<<<< calculate the layer sensitivity <<<<<<<<<<<<<<<
     
         '''
@@ -346,7 +348,8 @@ def calculate_layer_neuron(observations, actor, task_id):
     perturbed_observations = observations.at[:, :12].add(noise)
     info_, perturbed_intermediate = actor(perturbed_observations, jnp.array([task_id]))
     delta_y = tree_map(lambda x, y: jnp.abs(x - y), intermediate['intermediates'], perturbed_intermediate['intermediates'])
-    return delta_y, jnp.abs(info[1]['means'] - info_[1]['means']), info[1]
+    info[1]['masks']['mean_layer'] = jnp.ones(4)
+    return delta_y, info[1]
 
 def get_each_layer_neuron_difference(delta_y, info):
     layer_name = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
@@ -359,11 +362,18 @@ def get_each_layer_neuron_difference(delta_y, info):
         # Drop the values which are 0 from molecule
         molecule = molecule[molecule != 0]
         output[layer_name] = molecule / denominator
+
+    # mean layer
+    layer_name = 'mean_layer'
+    molecule = delta_y[layer_name]['__call__'][0].mean(axis=0)
+    denominator = molecule.sum() / 4
+    output[layer_name] = molecule / denominator
+
     return output
 
 def get_each_layer_reset_indices(neuron_difference, threshold=0.01):
     output = {}
-    for layer_name in ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']:
+    for layer_name in ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3', 'mean_layer']:
         temp = []
         for i in range(neuron_difference[layer_name].shape[0]):
             if neuron_difference[layer_name][i] < threshold:
@@ -377,6 +387,8 @@ def get_available_indices(info):
         flag = info['masks'][layer_name][0]
         available_indices = jnp.where(flag == 1)[0]
         output[layer_name] = available_indices
+    # mean layer
+    output['mean_layer'] = jnp.arange(4)
     return output
 
 def get_new_params_by_layer(actor, temp_params, reset_indices, layer_name, available_indices):
@@ -388,8 +400,9 @@ def get_new_params_by_layer(actor, temp_params, reset_indices, layer_name, avail
     return params
 
 def reset_params_four_layers(actor, temp_params, reset_indices, available_indices):
-    new_params = unfreeze(actor.params)
-    layer_name_list = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']
+    # new_params = unfreeze(actor.params)
+    new_params = unfreeze(temp_params)
+    layer_name_list = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3', 'mean_layer']
     for layer_name in layer_name_list:
         if reset_indices[layer_name].size > 0:
             new_layer_params = get_new_params_by_layer(actor, temp_params, reset_indices, layer_name, available_indices)
