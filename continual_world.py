@@ -67,9 +67,9 @@ TASK_SEQS = {
         {'task': "button-press-v1", 'hint': 'Press a button.'}
     ],
     "cw3-test": [
-        {'task': "stick-pull-v1", 'hint': 'Grasp a stick and pull a box with the stick.'},
         {'task': "push-back-v1", 'hint': 'Pull a puck to a goal.'},
         {'task': "shelf-place-v1", 'hint': 'Pick and place a puck onto a shelf.'},
+        {'task': "stick-pull-v1", 'hint': 'Grasp a stick and pull a box with the stick.'},
     ]
 }
 

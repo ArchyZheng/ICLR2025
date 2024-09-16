@@ -27,8 +27,8 @@ import pickle
 
 FLAGS = flags.FLAGS
 # flags.DEFINE_string('env_name', 'cw1-stick-pull', 'Environment name.')
-flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
-flags.DEFINE_integer('seed', 440, 'Random seed.')
+flags.DEFINE_string('env_name', 'cw3-test', 'Environment name.')
+flags.DEFINE_integer('seed', 550, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
 flags.DEFINE_string('env_type', 'random_init_all', 'The type of env is either deterministic or random_init_all')
@@ -49,7 +49,7 @@ flags.DEFINE_integer('distill_steps', int(2e4), 'distillation steps')
 
 flags.DEFINE_boolean('tqdm', False, 'Use tqdm progress bar.')
 flags.DEFINE_string('wandb_mode', 'online', 'Track experiments with Weights and Biases.')
-flags.DEFINE_string('wandb_project_name', "new_params_mask", "The wandb's project name.")
+flags.DEFINE_string('wandb_project_name', "new_params_mask_cw3_quick", "The wandb's project name.")
 flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project")
 flags.DEFINE_boolean('save_checkpoint', True, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '~/rl-archy/Documents/PyCode/CoTASP/logs', 'Logging dir.')
@@ -150,23 +150,12 @@ def main(_):
                     print(i, distill_info)
             # reset actor's optimizer
             agent.reset_actor_optimizer()
-        # >>>>>>>>>>>>>>>>>>>> load the 4-th task model >>>>>>>>>>>>>>>
-        # check_point_path = 'stored_agent_and_cumul_masks_and_grad_masks/330/3/actor.pkl'
-        # agent.actor = agent.actor.load(check_point_path)
-        # model_task_id = 4
-        # dict_task = seq_tasks[model_task_id]
-        # eval_envs = []
-        # eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
-        # with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/cumul_masks.pkl', 'rb') as f:
-        #     agent.cumul_masks = pickle.load(f)
-        # with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/param_masks.pkl', 'rb') as f:
-        #     agent.param_masks = pickle.load(f)
-        # task_idx = model_task_id
+        
         # >>>>>>>>>>>>>>>>>>>> store the parameter before learning the new task >>>>>>>>>>>>>>>
         temp_params = agent.actor.params.copy() # NOTE: store the parameter before learning the new task
         # <<<<<<<<<<<<<<<<<<<< store the parameter before learning the new task <<<<<<<<<<<<<<<
 
-        # <<<<<<<<<<<<<<<<<<<< load the 4-th task model <<<<<<<<<<<<<<<
+
         # set continual world environment
         env = get_single_env(
             dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type, 

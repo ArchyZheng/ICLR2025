@@ -28,7 +28,7 @@ import pickle
 FLAGS = flags.FLAGS
 # flags.DEFINE_string('env_name', 'cw1-stick-pull', 'Environment name.')
 flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
-flags.DEFINE_integer('seed', 440, 'Random seed.')
+flags.DEFINE_integer('seed', 660, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
 flags.DEFINE_string('env_type', 'random_init_all', 'The type of env is either deterministic or random_init_all')
@@ -150,23 +150,25 @@ def main(_):
                     print(i, distill_info)
             # reset actor's optimizer
             agent.reset_actor_optimizer()
-        # >>>>>>>>>>>>>>>>>>>> load the 4-th task model >>>>>>>>>>>>>>>
-        # check_point_path = 'stored_agent_and_cumul_masks_and_grad_masks/330/3/actor.pkl'
-        # agent.actor = agent.actor.load(check_point_path)
-        # model_task_id = 4
-        # dict_task = seq_tasks[model_task_id]
-        # eval_envs = []
-        # eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
-        # with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/cumul_masks.pkl', 'rb') as f:
-        #     agent.cumul_masks = pickle.load(f)
-        # with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/param_masks.pkl', 'rb') as f:
-        #     agent.param_masks = pickle.load(f)
-        # task_idx = model_task_id
-        # >>>>>>>>>>>>>>>>>>>> store the parameter before learning the new task >>>>>>>>>>>>>>>
-        temp_params = agent.actor.params.copy() # NOTE: store the parameter before learning the new task
-        # <<<<<<<<<<<<<<<<<<<< store the parameter before learning the new task <<<<<<<<<<<<<<<
 
+
+        # >>>>>>>>>>>>>>>>>>>> load the 4-th task model >>>>>>>>>>>>>>>
+        check_point_path = 'stored_agent_and_cumul_masks_and_grad_masks/330/3/actor.pkl'
+        agent.actor = agent.actor.load(check_point_path)
+        model_task_id = 4
+        dict_task = seq_tasks[model_task_id]
+        eval_envs = []
+        eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
+        with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/cumul_masks.pkl', 'rb') as f:
+            agent.cumul_masks = pickle.load(f)
+        with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/param_masks.pkl', 'rb') as f:
+            agent.param_masks = pickle.load(f)
+        task_idx = model_task_id
         # <<<<<<<<<<<<<<<<<<<< load the 4-th task model <<<<<<<<<<<<<<<
+
+        
+        
+
         # set continual world environment
         env = get_single_env(
             dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type, 
@@ -176,6 +178,35 @@ def main(_):
         replay_buffer = ReplayBuffer(
             env.observation_space, env.action_space, FLAGS.buffer_size or FLAGS.max_step
         )
+
+        
+        
+
+        # >>>>>>>>>>>>>>>>>>>> calculate the overlap parameters between the current task and the previous tasks >>>>>>>>>>>>>>>
+        a, b = agent.actor(agent.dummy_o, jnp.array([task_idx]))
+        current_grad_masks = agent.get_grad_masks(
+            {'params': agent.actor.params}, b['masks']
+        )
+        overlap_params = tree_map(lambda x, y: (1 - x) * (1 - y), current_grad_masks, unfreeze(agent.param_masks))
+        # <<<<<<<<<<<<<<<<<<<< calculate the overlap parameters between the current task and the previous tasks <<<<<<<<<<<<<<<
+
+
+
+
+        # >>>>>>>>>>>>>>>>>>>> let the overlap parameters to multiply the alpha >>>>>>>>>>>>>>>
+        alpha = 0.25
+        template_params = tree_map(lambda x: 1 - x * (1 - alpha), overlap_params)
+        # actor.params will multiply template_params
+        current_params = unfreeze(agent.actor.params)
+        for path, value in template_params.items():
+            current_params[path[0]][path[1]] = tree_map(lambda x, y: x * y, current_params[path[0]][path[1]], value)
+        agent.actor = agent.actor.replace(params=FrozenDict(current_params))
+        # <<<<<<<<<<<<<<<<<<<< let the overlap parameters to multiply the alpha <<<<<<<<<<<<<<<
+        temp_params = agent.actor.params.copy() # NOTE: store the parameter before learning the new task
+
+
+
+        
         evaluation_buffer = ReplayBuffer(
             env.observation_space, env.action_space, FLAGS.evaluation_batch_size
         )
@@ -315,29 +346,30 @@ def main(_):
         Updating miscellaneous things
         '''
         print('End of the current task')
+        break
         dict_stats = agent.end_task(task_idx, save_policy_dir, save_dict_dir)
         # >>>>>>>>>>>>>>>>>>>> restore the agent and cumul_masks and grad_masks >>>>>>>>>>>>>>>
-        store_folder_name = f'stored_agent_new_mechanism'
-        agent.actor.save(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/actor.pkl')
+        # store_folder_name = f'stored_agent_new_mechanism'
+        # agent.actor.save(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/actor.pkl')
         
-        # # Save cumul_masks
-        with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'wb') as f:
-            pickle.dump(agent.cumul_masks, f)
+        # # # Save cumul_masks
+        # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'wb') as f:
+        #     pickle.dump(agent.cumul_masks, f)
         
-        # # # Restore cumul_masks
-        # # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'rb') as f:
-        # #     loaded_cumul_masks = pickle.load(f)
+        # # # # Restore cumul_masks
+        # # # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/cumul_masks.pkl', 'rb') as f:
+        # # #     loaded_cumul_masks = pickle.load(f)
         
-        with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'wb') as f:
-            pickle.dump(agent.param_masks, f)
+        # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'wb') as f:
+        #     pickle.dump(agent.param_masks, f)
         
-        # restore buffer
-        with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/replay_buffer.pkl', 'wb') as f:
-            pickle.dump(replay_buffer, f)
+        # # restore buffer
+        # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/replay_buffer.pkl', 'wb') as f:
+        #     pickle.dump(replay_buffer, f)
         
-        # # # Restore agent.param_masks
-        # # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'rb') as f:
-        # #     loaded_param_masks_dict = pickle.load(f)
+        # # # # Restore agent.param_masks
+        # # # with open(f'{store_folder_name}/{FLAGS.seed}/{task_idx}/param_masks.pkl', 'rb') as f:
+        # # #     loaded_param_masks_dict = pickle.load(f)
         # <<<<<<<<<<<<<<<<<<<< restore the agent and cumul_masks and grad_masks <<<<<<<<<<<<<<<
 
     # save log data
