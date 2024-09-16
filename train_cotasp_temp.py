@@ -151,17 +151,17 @@ def main(_):
             # reset actor's optimizer
             agent.reset_actor_optimizer()
         # >>>>>>>>>>>>>>>>>>>> load the 4-th task model >>>>>>>>>>>>>>>
-        # check_point_path = 'stored_agent_and_cumul_masks_and_grad_masks/330/3/actor.pkl'
-        # agent.actor = agent.actor.load(check_point_path)
-        # model_task_id = 4
-        # dict_task = seq_tasks[model_task_id]
-        # eval_envs = []
-        # eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
-        # with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/cumul_masks.pkl', 'rb') as f:
-        #     agent.cumul_masks = pickle.load(f)
-        # with open(f'stored_agent_and_cumul_masks_and_grad_masks/330/3/param_masks.pkl', 'rb') as f:
-        #     agent.param_masks = pickle.load(f)
-        # task_idx = model_task_id
+        check_point_path = 'stored_agent_new_mechanism/220/1/actor.pkl'
+        agent.actor = agent.actor.load(check_point_path)
+        model_task_id = 4
+        dict_task = seq_tasks[model_task_id]
+        eval_envs = []
+        eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
+        with open(f'stored_agent_new_mechanism/220/1/cumul_masks.pkl', 'rb') as f:
+            agent.cumul_masks = pickle.load(f)
+        with open(f'stored_agent_new_mechanism/220/1/param_masks.pkl', 'rb') as f:
+            agent.param_masks = pickle.load(f)
+        task_idx = model_task_id
         # >>>>>>>>>>>>>>>>>>>> store the parameter before learning the new task >>>>>>>>>>>>>>>
         temp_params = agent.actor.params.copy() # NOTE: store the parameter before learning the new task
         # <<<<<<<<<<<<<<<<<<<< store the parameter before learning the new task <<<<<<<<<<<<<<<

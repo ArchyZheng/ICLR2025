@@ -637,10 +637,12 @@ class CoTASPLearner(SACLearner):
         )
         # To condition the training of task t + 1, we compute 
         # the gradient masks according to cumulative binary masks
-        grad_masks = self.get_grad_masks(
+        current_grad_masks = self.get_grad_masks(
             {'params': self.actor.params}, self.cumul_masks
         )
-        self.param_masks = freeze(grad_masks)
+
+        param_masks = tree_map(lambda a, b: jnp.minimum(a, b), unfreeze(self.param_masks), current_grad_masks)
+        self.param_masks = freeze(param_masks)
 
         # update dictionary learners
         dict_stats = {}
