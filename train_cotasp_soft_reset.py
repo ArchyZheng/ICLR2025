@@ -28,7 +28,7 @@ import pickle
 FLAGS = flags.FLAGS
 # flags.DEFINE_string('env_name', 'cw1-stick-pull', 'Environment name.')
 flags.DEFINE_string('env_name', 'cw10', 'Environment name.')
-flags.DEFINE_integer('seed', 440, 'Random seed.')
+flags.DEFINE_integer('seed', 220, 'Random seed.')
 flags.DEFINE_string('base_algo', 'cotasp', 'base learning algorithm')
 
 flags.DEFINE_string('env_type', 'random_init_all', 'The type of env is either deterministic or random_init_all')
@@ -40,7 +40,7 @@ flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updating per # environment steps.')
 flags.DEFINE_integer('buffer_size', int(1e6), 'Size of replay buffer')
 flags.DEFINE_integer('max_step', int(1e6), 'Number of training steps for each task')
-flags.DEFINE_integer('start_training', int(1e4), 'Number of training steps to start training.')
+flags.DEFINE_integer('start_training', int(3e4), 'Number of training steps to start training.')
 flags.DEFINE_integer('theta_step', int(990), 'Number of training steps for theta.')
 flags.DEFINE_integer('alpha_step', int(10), 'Number of finetune steps for alpha.')
 
@@ -59,6 +59,7 @@ flags.DEFINE_integer('evaluation_batch_size', int(1e3), "the batch size for eval
 flags.DEFINE_float('layer_neuron_threshold', 0.6, 'the threshold to reset the parameters')
 flags.DEFINE_integer('stop_reset_after_steps', int(8e5), 'stop reset once the steps reach this value')
 flags.DEFINE_float('soft_reset_rate', 0.2, 'the rate to reset the parameters')
+flags.DEFINE_bool('load_model_from_checkpoint', True, 'whether to load the model from the checkpoint')
 
 
 # YAML file path to cotasp's hyperparameter configuration
@@ -152,17 +153,18 @@ def main(_):
             # reset actor's optimizer
             agent.reset_actor_optimizer()
         # >>>>>>>>>>>>>>>>>>>> load the 4-th task model >>>>>>>>>>>>>>>
-        check_point_path = f'stored_agent_and_cumul_masks_and_grad_masks/{FLAGS.seed}/3/actor.pkl'
-        agent.actor = agent.actor.load(check_point_path)
-        model_task_id = 4
-        dict_task = seq_tasks[model_task_id]
-        eval_envs = []
-        eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
-        with open(f'stored_agent_and_cumul_masks_and_grad_masks/{FLAGS.seed}/3/cumul_masks.pkl', 'rb') as f:
-            agent.cumul_masks = pickle.load(f)
-        with open(f'stored_agent_and_cumul_masks_and_grad_masks/{FLAGS.seed}/3/param_masks.pkl', 'rb') as f:
-            agent.param_masks = pickle.load(f)
-        task_idx = model_task_id
+        if FLAGS.load_model_from_checkpoint:
+            check_point_path = f'stored_agent_and_cumul_masks_and_grad_masks/{FLAGS.seed}/3/actor.pkl'
+            agent.actor = agent.actor.load(check_point_path)
+            model_task_id = 4
+            dict_task = seq_tasks[model_task_id]
+            eval_envs = []
+            eval_envs.append(get_single_env(dict_task['task'], FLAGS.seed, randomization=FLAGS.env_type))
+            with open(f'stored_agent_and_cumul_masks_and_grad_masks/{FLAGS.seed}/3/cumul_masks.pkl', 'rb') as f:
+                agent.cumul_masks = pickle.load(f)
+            with open(f'stored_agent_and_cumul_masks_and_grad_masks/{FLAGS.seed}/3/param_masks.pkl', 'rb') as f:
+                agent.param_masks = pickle.load(f)
+            task_idx = model_task_id
         # >>>>>>>>>>>>>>>>>>>> store the parameter before learning the new task >>>>>>>>>>>>>>>
         temp_params = agent.actor.params.copy() # NOTE: store the parameter before learning the new task
         # <<<<<<<<<<<<<<<<<<<< store the parameter before learning the new task <<<<<<<<<<<<<<<
@@ -258,6 +260,8 @@ def main(_):
         Updating miscellaneous things
         '''
         print('End of the current task')
+        if FLAGS.load_model_from_checkpoint:
+            break
         dict_stats = agent.end_task(task_idx, save_policy_dir, save_dict_dir)
         # >>>>>>>>>>>>>>>>>>>> restore the agent and cumul_masks and grad_masks >>>>>>>>>>>>>>>
         # store_folder_name = f'stored_agent_new_mechanism'
