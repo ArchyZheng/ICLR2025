@@ -66,6 +66,10 @@ def filter_theta(path, _):
         return 'frozen'
     elif 'log_std_layer' in path:
         return 'frozen'
+    elif 'beta' in path:
+        return 'frozen'
+    elif 'overlap_params_dict' in path:
+        return 'frozen'
     else:
         return 'trainable'
 
@@ -76,6 +80,10 @@ def filter_alpha(path, _):
             return 'frozen'
         if f'random_embeds_bb_{i}' in path:
             return 'frozen'
+    if f'beta' in path:
+        return 'frozen'
+    if 'overlap_params_dict' in path:
+        return 'frozen'
     return 'trainable'
 
 
@@ -544,6 +552,8 @@ class MPNTrainState(struct.PyTreeNode):
     tx_alpha: optax.GradientTransformation = struct.field(pytree_node=False)
     opt_state_theta: optax.OptState
     opt_state_alpha: optax.OptState
+    overlap_params_dict: dict
+    beta: float
 
     def __call__(self, *args, **kwargs):
         return self.apply_fn({'params': self.params}, *args, **kwargs) 
@@ -611,6 +621,8 @@ class MPNTrainState(struct.PyTreeNode):
         # init optimizer
         opt_state_theta = tx_theta.init(params)
         opt_state_alpha = tx_alpha.init(params)
+        overlap_params_dict = {}
+        beta = 0.1
 
         return cls(
             step=0,
@@ -620,6 +632,8 @@ class MPNTrainState(struct.PyTreeNode):
             tx_alpha=tx_alpha,
             opt_state_theta=opt_state_theta,
             opt_state_alpha=opt_state_alpha,
+            overlap_params_dict={},
+            beta=beta,
             **kwargs,
         )
 

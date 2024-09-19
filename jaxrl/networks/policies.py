@@ -7,6 +7,27 @@ import jax.numpy as jnp
 import numpy as np
 from jax import custom_jvp
 from tensorflow_probability.substrates import jax as tfp
+from flax.linen.module import Module
+from flax.linen.dtypes import promote_dtype
+from flax.linen.module import Module, compact
+from jax import eval_shape, lax
+from jax.tree_util import tree_map
+
+from flax.typing import (
+  Array,
+  PRNGKey as PRNGKey,
+  Dtype,
+  Shape as Shape,
+  Initializer,
+  PrecisionLike,
+  DotGeneralT,
+  ConvGeneralDilatedT,
+  PaddingLike,
+  LaxPadding,
+)
+from flax.linen import initializers
+
+default_kernel_init = initializers.lecun_normal()
 
 tfd = tfp.distributions
 tfb = tfp.bijectors
@@ -183,6 +204,60 @@ def sigma_activation(sigma, sigma_min=LOG_STD_MIN, sigma_max=LOG_STD_MAX):
 def mu_activation(mu):
     return jnp.tanh(mu)
 
+# x w + beta * x (1 - w)
+
+class customLinearLayer(Module):
+    features: int
+    use_bias: bool = True
+    dtype: Dtype | None = None
+    param_dtype: Dtype = jnp.float32
+    precision: PrecisionLike = None
+    kernel_init: Initializer = default_kernel_init
+    bias_init: Initializer = initializers.zeros_init()
+    # Deprecated. Will be removed.
+    dot_general: DotGeneralT | None = None
+    dot_general_cls: Any = None
+
+    @compact
+    def __call__(self, inputs: Array, overlap_params_kernel = None, overlap_params_bias = None, beta = None) -> Array:
+        kernel = self.param(
+            'kernel',
+            self.kernel_init,
+            (jnp.shape(inputs)[-1], self.features),
+            self.param_dtype,
+            )
+        
+        if self.use_bias:
+            bias = self.param(
+                'bias', self.bias_init, (self.features,), self.param_dtype
+            )
+            if overlap_params_bias is not None:
+                bias_mask = jnp.where(overlap_params_bias == 1, beta, 1)
+                bias = tree_map(lambda x, y: x * y, bias, bias_mask)
+        else:
+            bias = None
+            inputs, kernel, bias = promote_dtype(inputs, kernel, bias, dtype=self.dtype)
+        
+        if overlap_params_kernel is not None:
+            kernel_mask = jnp.where(overlap_params_kernel == 1, beta, 1)
+            kernel = tree_map(lambda x, y: x * y, kernel, kernel_mask)
+
+        if self.dot_general_cls is not None:
+            dot_general = self.dot_general_cls()
+        elif self.dot_general is not None:
+            dot_general = self.dot_general
+        else:
+            dot_general = lax.dot_general
+            y = dot_general(
+            inputs,
+            kernel,
+            (((inputs.ndim - 1,), (0,)), ((), ())),
+            precision=self.precision,
+            )
+        if bias is not None:
+            y += jnp.reshape(bias, (1,) * (y.ndim - 1) + (-1,))
+        return y
+
 
 class MetaPolicy(nn.Module):
     hidden_dims: Sequence[int]
@@ -198,7 +273,7 @@ class MetaPolicy(nn.Module):
     tanh_squash: bool = True
 
     def setup(self):
-        self.backbones = [nn.Dense(hidn, kernel_init=default_init()) \
+        self.backbones = [customLinearLayer(hidn, kernel_init=default_init()) \
             for hidn in self.hidden_dims]
         self.embeds_bb = [nn.Embed(self.task_num, hidn, embedding_init=default_init()) \
             for hidn in self.hidden_dims]
@@ -206,7 +281,7 @@ class MetaPolicy(nn.Module):
             for hidn in self.hidden_dims]
         
         
-        self.mean_layer = nn.Dense(
+        self.mean_layer = customLinearLayer(
             self.action_dim, 
             kernel_init=default_init(self.final_fc_init_scale),
             use_bias=False)
@@ -227,13 +302,22 @@ class MetaPolicy(nn.Module):
         if self.use_layer_norm:
             self.masked_ln = MaskedLayerNorm(use_bias=False, use_scale=False)
 
+        self.overlap_params_dict = self.variable('params', 'overlap_params_dict', lambda x: x, None)
+        self.beta = self.variable('params', 'beta', lambda x: x, None)
+        
+
     def __call__(self,
                  x: jnp.ndarray,
                  t: jnp.ndarray,
                  temperature: float = 1.0):
         masks = {}
+        layer_name = [(('backbones_0', 'kernel'), ('backbones_0', 'bias')), (('backbones_1', 'kernel'), ('backbones_1', 'bias')), (('backbones_2', 'kernel'), ('backbones_2', 'bias')), (('backbones_3', 'kernel'), ('backbones_3', 'bias'))]
+        overlap_param = self.overlap_params_dict
         for i, layer in enumerate(self.backbones):
-            x = layer(x)
+            if overlap_param.value == None:
+                x = layer(x)
+            else:
+                x = layer(x, overlap_params_kernel=overlap_param.value[layer_name[i][0]], overlap_params_bias=overlap_param.value[layer_name[i][1]], beta=self.beta.value[i])
             # straight-through estimator
             phi_l = ste_step_fn(self.embeds_bb[i](t))
             phi_l_random = ste_step_fn(self.random_embeds_bb[i](t))
@@ -250,7 +334,11 @@ class MetaPolicy(nn.Module):
             else:
                 x = self.activation(x)
         
-        means = self.mean_layer(x)
+        layer_name = [('mean_layer', 'kernel')]
+        if overlap_param.value == None:
+            means = self.mean_layer(x)
+        else:
+            means = self.mean_layer(x, overlap_params_kernel=overlap_param.value[layer_name[0]], overlap_params_bias=None, beta=self.beta.value[4])
 
         # Avoid numerical issues by limiting the mean of the Gaussian
         # to be in [-clip_mean, clip_mean]

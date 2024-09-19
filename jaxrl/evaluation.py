@@ -1,5 +1,5 @@
 from typing import Dict, List
-
+from flax.core import unfreeze, FrozenDict
 import gym
 import numpy as np
 import jax.numpy as jnp
@@ -34,7 +34,28 @@ def evaluate(agent, env: gym.Env, num_episodes: int, with_task_embed=False, task
         stats['success'] = successes / num_episodes
     return stats
 
-def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, tadell=False) -> Dict[str, float]:
+def change_overlap_param_mask(agent, overlap_param, task_id, outside_task_id, multi_head, beta_dict=None):
+    if task_id in overlap_param:
+        a = agent.actor.params
+        a = unfreeze(a)
+        if multi_head:
+            a['mean_layer']['kernel'] = multi_head[task_id]
+        a['overlap_params_dict'] = overlap_param[task_id]
+        a['beta'] = beta_dict[task_id]
+        a = FrozenDict(a)
+        agent.actor = agent.actor.replace(params=a)
+    else:
+        a = agent.actor.params
+        a = unfreeze(a)
+        if multi_head:
+            a['mean_layer']['kernel'] = multi_head[task_id]
+        a['overlap_params_dict'] = None # this is a placeholder..
+        a = FrozenDict(a)
+        agent.actor = agent.actor.replace(params=a)
+        
+    return agent
+
+def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, current_task_id: int, overlap_param: dict, beta_dict: dict, multi_head=None, naive_sac=False, tadell=False) -> Dict[str, float]:
     stats = {}
     sum_return = 0.0
     sum_success = 0.0
@@ -45,7 +66,8 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
     # dummy_obs = jnp.ones((128, 12))
 
     for task_i, env in enumerate(envs):
-        task_i = 4
+        agent = change_overlap_param_mask(agent, overlap_param, task_i, outside_task_id=current_task_id, beta_dict=beta_dict, multi_head=multi_head)
+            
         for k in list_log_keys:
             stats[f'{task_i}-{env.name}/{k}'] = []
         successes = None
@@ -103,5 +125,7 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, naive_sac=False, 
     stats['avg_return'] = sum_return / len(envs)
     stats['test/deterministic/average_success'] = sum_success / len(envs)
     stats['test/deterministic/average_success_final'] = sum_success_final / len(envs)
+
+    agent = change_overlap_param_mask(agent, overlap_param,current_task_id, outside_task_id=current_task_id, beta_dict=beta_dict, multi_head=multi_head)
 
     return stats

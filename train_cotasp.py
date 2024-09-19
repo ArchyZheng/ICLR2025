@@ -57,14 +57,19 @@ flags.DEFINE_string('wandb_entity', None, "the entity (team) of wandb's project"
 flags.DEFINE_boolean('save_checkpoint', False, 'Save meta-policy network parameters')
 flags.DEFINE_string('save_dir', '~/rl-archy/Documents/PyCode/CoTASP/logs', 'Logging dir.')
 
+
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>> multi-head >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+flags.DEFINE_bool('multi_head', False, 'whether to use multi-head in the actor')
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>> beta mechanism >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+flags.DEFINE_bool('adaptive_beta', False, 'whether to use adaptive beta')
+flags.DEFINE_float('beta_lambda', 0.5, 'the beta lambda for the beta mechanism')
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>> input sensitive >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+flags.DEFINE_bool('use_input_sensitive', False, 'whether to use input sensitive')
 flags.DEFINE_integer('calculate_layer_sensitivity_interval', int(8e4), 'calculate the layer sensitivity every x steps')
 flags.DEFINE_integer('evaluation_batch_size', int(1e3), "the batch size for evaluation")
 flags.DEFINE_float('layer_neuron_threshold', 0.6, 'the threshold to reset the parameters')
 flags.DEFINE_integer('stop_reset_after_steps', int(8e5), 'stop reset once the steps reach this value')
-flags.DEFINE_float('beta_lambda', 0.5, 'the beta lambda for the beta mechanism')
-flags.DEFINE_bool('multi_head', False, 'whether to use multi-head in the actor')
-flags.DEFINE_bool('adaptive_beta', True, 'whether to use adaptive beta')
-flags.DEFINE_bool('use_input_sensitive', False, 'whether to use input sensitive')
+
 flags.DEFINE_bool('store_everything', False, 'store everything')
 
 
@@ -174,7 +179,7 @@ def main(_):
         agent.actor = agent.actor.replace(overlap_params_dict=overlap_params_dict)
 
             
-
+        # calculate the overlap parameters, and log it.
         layer_name_list = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3', 'mean_layer']
         overlap_params_number = {}
         forward_params_number = {}
@@ -187,6 +192,7 @@ def main(_):
             total_overlap_params += overlap_params_number[layer_name]
             total_forward_params += forward_params_number[layer_name]
         for layer_name, overlap_params_number in overlap_params_number.items():
+            # if each layer use different beta
             if FLAGS.adaptive_beta:
                 current_beta[layer_name] = FLAGS.beta_lambda * get_beta(frozen_number=overlap_params_number, total_number=forward_params_number[layer_name])
             else:
@@ -211,8 +217,8 @@ def main(_):
         # current_beta = FLAGS.beta_lambda * get_beta(frozen_number=total_overlap_params, total_number=total_forward_params)
         # current_beta = 0.3
         beta_list = []
-        for name, value in current_beta.items():
-            beta_list.append(value)
+        for layer_name in layer_name_list:
+            beta_list.append(current_beta[layer_name])
         beta_dict[task_idx] = beta_list
         a['beta'] = beta_list
         if FLAGS.multi_head:
@@ -264,7 +270,7 @@ def main(_):
         # reset environment
         observation, done = env.reset(), False
         if task_idx < 4:
-            max_steps = 3e5
+            max_steps = 5e5
         else:
             max_steps = 1e6
         # for idx in range(FLAGS.max_step):
