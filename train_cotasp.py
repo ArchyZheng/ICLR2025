@@ -63,6 +63,7 @@ flags.DEFINE_bool('multi_head', False, 'whether to use multi-head in the actor')
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>> beta mechanism >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 flags.DEFINE_bool('adaptive_beta', False, 'whether to use adaptive beta')
 flags.DEFINE_float('beta_lambda', 0.5, 'the beta lambda for the beta mechanism')
+flags.DEFINE_float('default_beta', 1, 'the value of default beta')
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>> input sensitive >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 flags.DEFINE_bool('use_input_sensitive', False, 'whether to use input sensitive')
 flags.DEFINE_integer('calculate_layer_sensitivity_interval', int(8e4), 'calculate the layer sensitivity every x steps')
@@ -196,7 +197,7 @@ def main(_):
             if FLAGS.adaptive_beta:
                 current_beta[layer_name] = FLAGS.beta_lambda * get_beta(frozen_number=overlap_params_number, total_number=forward_params_number[layer_name])
             else:
-                current_beta[layer_name] = 0.3
+                current_beta[layer_name] = FLAGS.default_beta
             wandb.log({
                 f"overlap_params_number/{layer_name}": overlap_params_number,
                 f"forward_params_number/{layer_name}": forward_params_number[layer_name],
