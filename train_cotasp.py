@@ -61,7 +61,7 @@ flags.DEFINE_string('save_dir', '~/rl-archy/Documents/PyCode/CoTASP/logs', 'Logg
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>> multi-head >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 flags.DEFINE_bool('multi_head', False, 'whether to use multi-head in the actor')
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>> beta mechanism >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-flags.DEFINE_bool('adaptive_beta', False, 'whether to use adaptive beta')
+flags.DEFINE_bool('use_adaptive_beta', False, 'whether to use adaptive beta')
 flags.DEFINE_float('beta_lambda', 0.5, 'the beta lambda for the beta mechanism')
 flags.DEFINE_float('default_beta', 1, 'the value of default beta')
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>> input sensitive >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -69,9 +69,9 @@ flags.DEFINE_bool('use_input_sensitive', False, 'whether to use input sensitive'
 flags.DEFINE_integer('calculate_layer_sensitivity_interval', int(8e4), 'calculate the layer sensitivity every x steps')
 flags.DEFINE_integer('evaluation_batch_size', int(1e3), "the batch size for evaluation")
 flags.DEFINE_float('layer_neuron_threshold', 0.6, 'the threshold to reset the parameters')
-flags.DEFINE_integer('stop_reset_after_steps', int(8e5), 'stop reset once the steps reach this value')
+flags.DEFINE_integer('stop_reset_after_steps', int(7.5e5), 'stop reset once the steps reach this value')
 
-flags.DEFINE_bool('store_everything', False, 'store everything')
+flags.DEFINE_bool('is_store_everything', False, 'store everything')
 
 
 # YAML file path to cotasp's hyperparameter configuration
@@ -129,7 +129,8 @@ def main(_):
             FLAGS.seed,
             temp_env.observation_space.sample()[np.newaxis],
             temp_env.action_space.sample()[np.newaxis], 
-            len(seq_tasks),
+            # len(seq_tasks),
+            20,
             **algo_kwargs)
         del temp_env
     else:
@@ -194,7 +195,7 @@ def main(_):
             total_forward_params += forward_params_number[layer_name]
         for layer_name, overlap_params_number in overlap_params_number.items():
             # if each layer use different beta
-            if FLAGS.adaptive_beta:
+            if FLAGS.use_adaptive_beta:
                 current_beta[layer_name] = FLAGS.beta_lambda * get_beta(frozen_number=overlap_params_number, total_number=forward_params_number[layer_name])
             else:
                 current_beta[layer_name] = FLAGS.default_beta
@@ -270,12 +271,7 @@ def main(_):
         schedule = itertools.cycle([False]*FLAGS.theta_step + [True]*FLAGS.alpha_step)
         # reset environment
         observation, done = env.reset(), False
-        if task_idx < 4:
-            max_steps = 5e5
-        else:
-            max_steps = 1e6
-        # for idx in range(FLAGS.max_step):
-        for idx in range(int(max_steps)):
+        for idx in range(FLAGS.max_step):
             if idx < FLAGS.start_training:
                 # initial exploration strategy proposed in ClonEX-SAC
                 if task_idx == 0:
@@ -416,7 +412,7 @@ def main(_):
         temp_params = agent.actor.params.copy()
         temp_params = unfreeze(temp_params)
         temp_params['overlap_params_dict'] = None
-        if FLAGS.store_everything:
+        if FLAGS.is_store_everything:
             store_folder_name = "restore_ckp/" + wandb.run.name
             if FLAGS.multi_head:
                 head_dict[task_idx] = temp_params['mean_layer']['kernel']

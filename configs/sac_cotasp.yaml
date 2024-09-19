@@ -28,7 +28,7 @@ dict_configs_random:
   positive_code: false
   scale_code: false
 dict_configs_fixed:
-  alpha: 0.0001 # change this
+  alpha: 0.01 # change this
   c: 1.0
   method: lasso_lars
   positive_code: false
