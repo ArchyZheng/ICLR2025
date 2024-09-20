@@ -218,6 +218,14 @@ def main(_):
         a['overlap_params_dict'] = overlap_params_dict[task_idx]
         # current_beta = FLAGS.beta_lambda * get_beta(frozen_number=total_overlap_params, total_number=total_forward_params)
         # current_beta = 0.3
+
+        
+        for layer_name in layer_name_list:
+            wandb.log({
+                f"beta/{layer_name}": current_beta[layer_name],
+                'global_steps': total_env_steps
+            })
+
         beta_list = []
         for layer_name in layer_name_list:
             beta_list.append(current_beta[layer_name])
