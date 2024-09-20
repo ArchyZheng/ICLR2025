@@ -72,6 +72,9 @@ flags.DEFINE_float('layer_neuron_threshold', 0.6, 'the threshold to reset the pa
 flags.DEFINE_integer('stop_reset_after_steps', int(7.5e5), 'stop reset once the steps reach this value')
 
 flags.DEFINE_bool('is_store_everything', False, 'store everything')
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Debug >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+flags.DEFINE_bool('use_quick_experiments', False, 'set the first four task quicker')
+flags.DEFINE_integer('first_four_task_max_steps', int(5e5), 'set the first four task max steps')
 
 
 # YAML file path to cotasp's hyperparameter configuration
@@ -279,7 +282,13 @@ def main(_):
         schedule = itertools.cycle([False]*FLAGS.theta_step + [True]*FLAGS.alpha_step)
         # reset environment
         observation, done = env.reset(), False
-        for idx in range(FLAGS.max_step):
+
+        if FLAGS.use_quick_experiments and task_idx < 4:
+            max_steps = FLAGS.first_four_task_max_steps
+        else:
+            max_steps = FLAGS.max_step
+        
+        for idx in range(max_steps):
             if idx < FLAGS.start_training:
                 # initial exploration strategy proposed in ClonEX-SAC
                 if task_idx == 0:

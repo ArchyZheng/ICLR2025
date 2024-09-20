@@ -40,6 +40,7 @@ class MaskCombinationLearner(CoTASPLearner):
         linear_range = [0.01, 0.01, 0.01, 0.01, 0.00005, 0.001, 0.001, 0.001, 0.001, 0.001]
         actor_configs = self.actor_configs
         dict_configs = self.dict_configs_random
+        seed = 330
         for id_layer, hidn in enumerate(actor_configs['hidden_dims']):
             dict_configs['alpha'] = linear_range[task_id]
             # if task_id < 5:
@@ -48,7 +49,8 @@ class MaskCombinationLearner(CoTASPLearner):
             dict_learner = OnlineDictLearnerV2(
                 384,
                 hidn,
-                task_id * 10000 + id_layer + 10000 + self.seed * 512,
+                # task_id * 10000 + id_layer + 10000 + self.seed * 512,
+                task_id * 10000 + id_layer + 10000 + seed * 512,
                 None,
                 **dict_configs)
             self.dict4layers_random[f'random_embeds_bb_{id_layer}'] = dict_learner

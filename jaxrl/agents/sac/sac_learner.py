@@ -485,6 +485,7 @@ class CoTASPLearner(SACLearner):
 
         # preset dict learner for each layer:
         self.dict4layers = {}
+        seed = 330
         for id_layer, hidn in enumerate(actor_configs['hidden_dims']):
             dict_learner = OnlineDictLearnerV2(
                 384,
