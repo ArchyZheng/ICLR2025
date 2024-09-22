@@ -69,12 +69,14 @@ flags.DEFINE_bool('use_input_sensitive', False, 'whether to use input sensitive'
 flags.DEFINE_integer('calculate_layer_sensitivity_interval', int(8e4), 'calculate the layer sensitivity every x steps')
 flags.DEFINE_integer('evaluation_batch_size', int(1e3), "the batch size for evaluation")
 flags.DEFINE_float('layer_neuron_threshold', 0.6, 'the threshold to reset the parameters')
-flags.DEFINE_integer('stop_reset_after_steps', int(7.5e5), 'stop reset once the steps reach this value')
+flags.DEFINE_integer('stop_reset_after_steps', int(6.5e5), 'stop reset once the steps reach this value')
 
 flags.DEFINE_bool('is_store_everything', False, 'store everything')
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Debug >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 flags.DEFINE_bool('use_quick_experiments', False, 'set the first four task quicker')
 flags.DEFINE_integer('first_four_task_max_steps', int(5e5), 'set the first four task max steps')
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> reset log_std >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+flags.DEFINE_bool('reset_log_std', False, 'reset the log_std')
 
 
 # YAML file path to cotasp's hyperparameter configuration
@@ -159,7 +161,7 @@ def main(_):
             key = jax.random.PRNGKey(i)
             head_dict[i] = default_init()(key, head_tamplate.shape)
     
-    
+    log_std_params = None
     for task_idx, dict_task in enumerate(seq_tasks):
         
         '''
@@ -168,6 +170,15 @@ def main(_):
         print(f'Learning on task {task_idx+1}: {dict_task["task"]} for {FLAGS.max_step} steps')
         # start the current task
         agent.start_task(task_idx, dict_task["hint"])
+        if FLAGS.reset_log_std:
+            if log_std_params is None:
+                log_std_params = agent.actor.params['log_std_layer']
+            else:
+                a = unfreeze(agent.actor.params)
+                a['log_std_layer'] = log_std_params
+                agent.actor = agent.actor.replace(params=FrozenDict(a))
+            
+            
 
         # >>>>>>>>>>>>>>>>>>>> log parameters situations >>>>>>>>>>>>>>>
         if FLAGS.multi_head:

@@ -36,11 +36,11 @@ class MaskCombinationLearner(CoTASPLearner):
                 # Replace the i-th row
                 actor_params[k]['embedding'] = actor_params[k]['embedding'].at[task_id].set(alpha_l)
 
-        # linear_range = np.linspace(0.01, 0.0001, 10)
-        linear_range = [0.01, 0.01, 0.01, 0.01, 0.00005, 0.001, 0.001, 0.001, 0.001, 0.001]
+        linear_range = np.linspace(0.01, 0.0001, 10)
+        # linear_range = [0.01, 0.01, 0.01, 0.01, 0.00005, 0.001, 0.001, 0.001, 0.001, 0.001]
         actor_configs = self.actor_configs
         dict_configs = self.dict_configs_random
-        seed = 330
+        seed = 550
         for id_layer, hidn in enumerate(actor_configs['hidden_dims']):
             dict_configs['alpha'] = linear_range[task_id]
             # if task_id < 5:
