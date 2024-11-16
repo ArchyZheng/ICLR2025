@@ -77,6 +77,9 @@ flags.DEFINE_bool('use_quick_experiments', False, 'set the first four task quick
 flags.DEFINE_integer('first_four_task_max_steps', int(5e5), 'set the first four task max steps')
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> reset log_std >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 flags.DEFINE_bool('reset_log_std', False, 'reset the log_std')
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> dormant type >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+flags.DEFINE_string('dormant_type', 'sensitivity', 'dormant type: sensitivity, redo')
+
 
 
 # YAML file path to cotasp's hyperparameter configuration
@@ -371,7 +374,12 @@ def main(_):
                     batch = evaluation_buffer.sample(FLAGS.evaluation_batch_size)
                     temp_observations = jnp.array(batch.observations)
                     agent.actor_with_intermediate = agent.actor_with_intermediate.replace(params=agent.actor.params)
-                    delta_y, info = calculate_layer_neuron(temp_observations, agent.actor_with_intermediate, task_idx)
+                    # use sensitivity dormant or the redo dormant
+                    match FLAGS.dormant_type:
+                        case "sensitivity": delta_y, info = calculate_layer_neuron(temp_observations, agent.actor_with_intermediate, task_idx) # <- sensitivity dormant
+                        case "redo": delta_y, info = calculate_neuron_output(temp_observations, agent.actor_with_intermediate, task_idx) # <- redo dormant
+                        case _: delta_y, info = calculate_layer_neuron(temp_observations, agent.actor_with_intermediate, task_idx) # <- sensitivity dormant
+
                     layer_neuron_difference = get_each_layer_neuron_difference(delta_y,info)
                     each_layer_reset_indices = get_each_layer_reset_indices(layer_neuron_difference, threshold=FLAGS.layer_neuron_threshold) # this function will indicate the indices of neurons to reset of each layer
                     total_reset_neurons = 0
@@ -480,6 +488,11 @@ def calculate_layer_neuron(observations, actor, task_id):
     delta_y = tree_map(lambda x, y: jnp.abs(x - y), intermediate['intermediates'], perturbed_intermediate['intermediates'])
     info[1]['masks']['mean_layer'] = jnp.ones(4)
     return delta_y, info[1]
+
+def calculate_neuron_output(observations, actor, task_id):
+    info, intermediate = actor(observations, jnp.array([task_id]))
+    info[1]['masks']['mean_layer'] = jnp.ones(4)
+    return intermediate['intermediates'], info[1]
 
 def get_each_layer_neuron_difference(delta_y, info):
     layer_name = ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']

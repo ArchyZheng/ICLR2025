@@ -16,7 +16,48 @@
                 "XLA_PYTHON_CLIENT_PREALLOCATE": "false"
             },
             "console": "integratedTerminal"
+        },
+    {
+        "name": "Python: train_cotasp.py",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "train_cotasp.py",
+        "args": [
+            "--seed", "110",
+            "--wandb_project_name", "rebuttal_results",
+            "--env_name", "salina/halfcheetah/forgetting",
+            "--default_beta", "0.3",
+            "--is_store_everything",
+            "--use_input_sensitive",
+            "--reset_log_std",
+            "--dormant_type", "redo"
+        ],
+        "console": "integratedTerminal",
+        "env": {
+            "CUDA_VISIBLE_DEVICES": "0",
+            "WANDB_API_KEY": "d3be0188f8e6de441fe26438708884794c8db33f",
+            "XLA_PYTHON_CLIENT_PREALLOCATE": "false"
         }
+    },
+    {
+        "name": "Python: continualworld.py",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "continual_world.py",
+        "args": [
+            // "--task_seq", "salina/halfcheetah/forgetting",
+            // "--seed", "110",
+            // "--randomization", "random_init_all",
+            // "--normalize_reward", "true"
+        ],
+        "console": "integratedTerminal",
+        "justMyCode": false,
+        "env": {
+            "CUDA_VISIBLE_DEVICES": "0",
+            "WANDB_API_KEY": "d3be0188f8e6de441fe26438708884794c8db33f",
+            "XLA_PYTHON_CLIENT_PREALLOCATE": "false"
+        }
+    }
     ],
     "inputs": [
         {

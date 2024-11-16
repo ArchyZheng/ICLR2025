@@ -1,3 +1,4 @@
+# %%
 from typing import List
 import random
 import gym
@@ -6,6 +7,7 @@ import numpy as np
 from gym.wrappers import TimeLimit
 
 from jaxrl import wrappers
+from brax.envs import env as _env
 
 from jaxrl.wrappers.normalization import RescaleReward
 
@@ -18,6 +20,12 @@ def get_mt50() -> metaworld.MT50:
     return MT50
 
 TASK_SEQS = {
+    "salina/halfcheetah/forgetting": [
+        {'task': "hugefoot", 'hint': 'halfcheetah with hugefoot'},
+        {'task': "moon", 'hint': 'halfcheetah in a small gravity environment'},
+        {'task': "carry_stuff", 'hint': 'halfcheetah is carrying some stuff'},
+        {'task': "rainfall", 'hint': 'halfcheetah is in a rainfall environment'},
+    ],
     "cw10": [
         {'task': "hammer-v1", 'hint': 'Hammer a screw on the wall.'},
         {'task': "push-wall-v1", 'hint': 'Bypass a wall and push a puck to a goal.'},
@@ -121,18 +129,25 @@ class RandomizationWrapper(gym.Wrapper):
 def get_subtasks(name: str) -> List[metaworld.Task]:
     return [s for s in MT50.train_tasks if s.env_name == name]
 
-
+from brax.envs import Env as BraxEnv
 def get_single_env(
     name, seed, 
     randomization="random_init_all",
     add_episode_monitor=True,
     normalize_reward=False
     ):
+    salina_list = ["hugefoot", "moon", "carry_stuff", "rainfall"]
     if name == "HalfCheetah-v3" or name == "Ant-v3":
         env = gym.make(name)
         env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
+    # >>>>>>>>>>>>>>>> add salina halfcheetah >>>>>>>>>>>>>>>
+    elif name in salina_list:
+        env: BraxEnv = MyHalfcheetah(env_task=name)
+        # env.seed(seed)
+        return env
+    # <<<<<<<<<<<<<<<< add salina halfcheetah <<<<<<<<<<<<<<<
     else:
         env = MT50.train_classes[name]()
         env.seed(seed)
@@ -147,36 +162,185 @@ def get_single_env(
     if add_episode_monitor:
         env = wrappers.EpisodeMonitor(env)
     return env
-    
+# %%    
 
-if __name__ == "__main__":
-    import time
+# if __name__ == "__main__":
+#     import time
 
-    # def print_reward(env: gym.Env):
-    #     obs, done = env.reset(), False
-    #     i = 0
-    #     while not done:
-    #         i += 1
-    #         next_obs, rew, done, _ = env.step(env.action_space.sample())
-    #         print(i, rew)
+#     # def print_reward(env: gym.Env):
+#     #     obs, done = env.reset(), False
+#     #     i = 0
+#     #     while not done:
+#     #         i += 1
+#     #         next_obs, rew, done, _ = env.step(env.action_space.sample())
+#     #         print(i, rew)
 
-    # tasks_list = TASK_SEQS["cw1-push"]
-    # env = get_single_env(tasks_list[0], 1, "deterministic", normalize_reward=False)
-    # env_normalized = get_single_env(tasks_list[0], 1, "deterministic", normalize_reward=True)
+#     # tasks_list = TASK_SEQS["cw1-push"]
+#     # env = get_single_env(tasks_list[0], 1, "deterministic", normalize_reward=False)
+#     # env_normalized = get_single_env(tasks_list[0], 1, "deterministic", normalize_reward=True)
 
-    # print_reward(env)
-    # print_reward(env_normalized)
+#     # print_reward(env)
+#     # print_reward(env_normalized)
 
-    tasks_list = TASK_SEQS["cw1-push"]
-    s = time.time()
-    env = get_single_env(tasks_list[0], 1, "random_init_all")
-    print(time.time() - s)
-    s = time.time()
-    env = get_single_env(tasks_list[0], 1, "random_init_all")
-    print(time.time() - s)
+#     tasks_list = TASK_SEQS["cw1-push"]
+#     s = time.time()
+#     env = get_single_env(tasks_list[0], 1, "random_init_all")
+#     print(time.time() - s)
+#     s = time.time()
+#     env = get_single_env(tasks_list[0], 1, "random_init_all")
+#     print(time.time() - s)
 
-    o = env.reset()
-    _, _, _, _ = env.step(np.array([np.nan, 1.0, -1.0, 0.0]))
-    o_new = env.reset()
-    print(o)
-    print(o_new)
+#     o = env.reset()
+#     _, _, _, _ = env.step(np.array([np.nan, 1.0, -1.0, 0.0]))
+#     o_new = env.reset()
+#     print(o)
+#     print(o_new)
+# %%
+# import brax.v1 as brax
+import numpy as np
+# from brax.v1 import jumpy as jp
+from brax import jumpy as jp
+
+# import numpy as jp
+# from brax.envs.half_cheetah import Halfcheetah
+# from brax.v1.envs.half_cheetah import Halfcheetah, _SYSTEM_CONFIG
+import brax
+from brax.envs.half_cheetah import Halfcheetah, _SYSTEM_CONFIG
+from google.protobuf import text_format
+#%%
+OBS_DIM = 18
+ACT_DIM = 6
+
+class MyHalfcheetah(Halfcheetah):
+    def __init__(self, env_task: str, **kwargs) -> None:
+        self._forward_reward_weight = 1.0
+        self._ctrl_cost_weight = 0.1
+        self._reset_noise_scale = 0.1
+        self._exclude_current_positions_from_observation = (True)
+        config = text_format.Parse(_SYSTEM_CONFIG, brax.Config())
+        env_specs = env_tasks[env_task]
+        self.obs_mask = jp.concatenate(np.ones((1,OBS_DIM)))
+        self.action_mask = jp.concatenate(np.ones((1,ACT_DIM)))
+        for spec,coeff in env_specs.items():
+            if spec == "gravity":
+                config.gravity.z *= coeff
+            elif spec == "friction":
+                config.friction *= coeff
+            elif spec == "obs_mask":
+                zeros = int(coeff * OBS_DIM)
+                ones = OBS_DIM - zeros
+                np.random.seed(0)
+                self.obs_mask = jp.concatenate(np.random.permutation(([0]*zeros)+([1]*ones)).reshape(1,-1))
+            elif spec == "action_mask":
+                self.action_mask[coeff] = 0.
+            elif spec == "action_swap":
+                self.action_mask[coeff] = -1.
+            else:
+                for body in config.bodies:
+                    if spec in body.name:
+                        body.mass *= coeff
+                        body.colliders[0].capsule.radius *= coeff
+        self.sys = brax.System(config)
+
+    def _get_obs(self, qp, info) -> jp.ndarray:
+        """Observe halfcheetah body position and velocities."""
+        joint_angle, joint_vel = self.sys.joints[0].angle_vel(qp)
+        # qpos: position and orientation of the torso and the joint angles
+        # TODO: convert rot to just y-ang component
+        if self._exclude_current_positions_from_observation:
+            qpos = [qp.pos[0, 2:], qp.rot[0, (0, 2)], joint_angle]
+        else:
+            qpos = [qp.pos[0, (0, 2)], qp.rot[0, (0, 2)], joint_angle]
+        # qvel: velocity of the torso and the joint angle velocities
+        qvel = [qp.vel[0, (0, 2)], qp.ang[0, 1:2], joint_vel]
+        return jp.concatenate(qpos + qvel) * self.obs_mask
+
+    def reset(self, rng: jp.ndarray):
+        """Resets the environment to an initial state."""
+        rng, rng1, rng2 = jp.random_split(rng, 3)
+
+        qpos = self.sys.default_angle() + self._noise(rng1)
+        qvel = self._noise(rng2)
+
+        qp = self.sys.default_qp(joint_angle=qpos, joint_velocity=qvel)
+        self._qps = [qp]
+        obs = self._get_obs(qp, self.sys.info(qp))
+        reward, done, zero = jp.zeros(3)
+        metrics = {
+            'x_position': zero,
+            'x_velocity': zero,
+            'reward_ctrl': zero,
+            'reward_run': zero,
+        }
+        self.state = _env.State(qp, obs, reward, done, metrics) 
+        return _env.State(qp, obs, reward, done, metrics)
+        
+
+    def step(self, action: jp.ndarray, state = None):
+        """Run one timestep of the environment's dynamics."""
+        if state == None:
+            state = self.state
+        action = action * self.action_mask
+        qp, info = self.sys.step(state.qp, action)
+        self._qps.append(qp)
+
+        velocity = (qp.pos[0] - state.qp.pos[0]) / self.sys.config.dt
+        forward_reward = self._forward_reward_weight * velocity[0]
+        ctrl_cost = self._ctrl_cost_weight * jp.sum(jp.square(action))
+
+        obs = self._get_obs(qp, info)
+        reward = forward_reward - ctrl_cost
+        state.metrics.update(
+            x_position=qp.pos[0, 0],
+            x_velocity=velocity[0],
+            reward_run=forward_reward,
+            reward_ctrl=-ctrl_cost)
+        self.state = state.replace(qp=qp, obs=obs, reward=reward) 
+        return self.state
+
+    def get_qps(self):
+        return self._qps
+
+env_tasks = {
+    "normal":{},
+    "carry_stuff":{"torso": 4.,"thigh": 1.,"shin": 1.,"foot": 1.},
+    'carry_stuff_hugegravity': {'torso': 4.0,'thigh': 1.0,'shin': 1.0,'foot': 1.0,'gravity': 1.5},
+    "defective_module":{"obs_mask":0.5},
+    "hugefoot":{"foot":1.5},
+    "hugefoot_rainfall": {'foot': 1.5, 'friction': 0.4},
+    "inverted_actions":{"action_swap":[0,1,2,3,4,5]},
+    "moon":{"gravity":0.15},
+    "tinyfoot":{"foot":0.5},
+    "tinyfoot_moon": {'foot': 0.5, 'gravity': 0.15},
+    "rainfall":{"friction":0.4},
+}
+# %%
+# import jax
+# import jax.numpy as jnp
+
+# def generate_rng(seed: int) -> jax.random.PRNGKey:
+#     return jax.random.PRNGKey(seed)
+
+# seq_tasks = TASK_SEQS["salina/halfcheetah/forgetting"]
+# %%
+# env = Halfcheetah()
+# rng = jp.random_prngkey(0)
+# state = env.reset(rng)
+# zero_action = jp.zeros((1, env.action_size))
+# next_state = env.step(state, zero_action)
+
+# %%
+
+
+# for task_idx, dict_task in enumerate(seq_tasks):
+#     env = get_single_env(
+#             dict_task['task'], 110, randomization=True, 
+#             normalize_reward=True
+#         )
+#     rng = jp.random_prngkey(0)
+#     state = env.reset(rng)
+#     print(state)
+#     zero_action = jp.zeros((env.action_size))
+#     next_state = env.step(zero_action)
+#     print(next_state)
+# %%
