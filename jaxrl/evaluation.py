@@ -57,7 +57,8 @@ def change_overlap_param_mask(agent, overlap_param, task_id, outside_task_id, mu
 
 def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, current_task_id: int, overlap_param: dict, beta_dict: dict, multi_head=None, naive_sac=False, tadell=False) -> Dict[str, float]:
     stats = {}
-    sum_return = 0.0
+    # sum_return = 0.0
+    sum_return = {}
     sum_success = 0.0
     sum_success_final = 0.0
     list_log_keys = ['return']
@@ -76,10 +77,14 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, current_task_id: 
         if tadell:
             agent.select_actor(task_i)
 
+        accumulate_return = 0
         for _ in range(num_episodes):
             observation, done = env.reset(), False
             flag_success = 0
+            current_step = 0
             while not done:
+                # print(current_step)
+                # current_step += 1
                 
                 if naive_sac:
                     action = agent.sample_actions(observation[np.newaxis], temperature=0)
@@ -91,40 +96,43 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, current_task_id: 
                     action = agent.sample_actions(observation[np.newaxis], task_i, temperature=0)
                     action = np.asarray(action, dtype=np.float32).flatten()
 
-                observation, _, done, info = env.step(action)
-                if 'success' in info:
-                    flag_success += info['success'] 
+                observation, reward, done, info = env.step(action)
+                accumulate_return += reward
+                # if 'success' in info:
+                #     flag_success += info['success'] 
 
-            for k in list_log_keys:
-                stats[f'{task_i}-{env.name}/{k}'].append(info['episode'][k])
+            # for k in list_log_keys:
+            #     stats[f'{task_i}-{env.name}/{k}'].append(info['episode'][k])
 
-            if 'success' in info:
-                if successes is None:
-                    successes = 0.0
-                successes += info['success']
+            # if 'success' in info:
+            #     if successes is None:
+            #         successes = 0.0
+            #     successes += info['success']
             
-            if flag_success > 0.5:
-                if successes_final is None:
-                    successes_final = 0.0
-                successes_final += 1.0
+            # if flag_success > 0.5:
+            #     if successes_final is None:
+            #         successes_final = 0.0
+            #     successes_final += 1.0
 
-        for k in list_log_keys:
-            stats[f'{task_i}-{env.name}/{k}'] = np.mean(stats[f'{task_i}-{env.name}/{k}'])
+        # for k in list_log_keys:
+        #     stats[f'{task_i}-{env.name}/{k}'] = np.mean(stats[f'{task_i}-{env.name}/{k}'])
 
-        if successes is not None:
-            stats[f'{task_i}-{env.name}/success'] = successes / num_episodes
-            sum_success += stats[f'{task_i}-{env.name}/success']
-        if successes_final is not None:
-            stats[f'{task_i}-{env.name}/success_final'] = successes_final / num_episodes
-            sum_success_final += stats[f'{task_i}-{env.name}/success_final']
+        # if successes is not None:
+        #     stats[f'{task_i}-{env.name}/success'] = successes / num_episodes
+        #     sum_success += stats[f'{task_i}-{env.name}/success']
+        # if successes_final is not None:
+        #     stats[f'{task_i}-{env.name}/success_final'] = successes_final / num_episodes
+        #     sum_success_final += stats[f'{task_i}-{env.name}/success_final']
 
-        sum_return += stats[f'{task_i}-{env.name}/return']
+        sum_return[f"{task_i}_{env.name}"] = accumulate_return / num_episodes
 
         # stats[f'{task_i}-{env.name}/check_dummy_action'] = agent.sample_actions(dummy_obs, task_i, temperature=0).mean()
 
-    stats['avg_return'] = sum_return / len(envs)
-    stats['test/deterministic/average_success'] = sum_success / len(envs)
-    stats['test/deterministic/average_success_final'] = sum_success_final / len(envs)
+    # stats['avg_return'] = sum_return / len(envs)
+    # stats['test/deterministic/average_success'] = sum_success / len(envs)
+    # stats['test/deterministic/average_success_final'] = sum_success_final / len(envs)
+    for key, value in sum_return.items():
+        stats[f'test/{key}_average_return'] = value
 
     agent = change_overlap_param_mask(agent, overlap_param,current_task_id, outside_task_id=current_task_id, beta_dict=beta_dict, multi_head=multi_head)
 

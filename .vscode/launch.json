@@ -30,7 +30,9 @@
             "--is_store_everything",
             "--use_input_sensitive",
             "--reset_log_std",
-            "--dormant_type", "redo"
+            "--dormant_type", "sensitivity",
+            "--eval_interval", "200000",
+            "--calculate_layer_sensitivity_interval", "10000",
         ],
         "console": "integratedTerminal",
         "env": {

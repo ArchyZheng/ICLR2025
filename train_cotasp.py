@@ -18,7 +18,7 @@ from jaxrl.evaluation import evaluate_cl
 from jaxrl.utils import Logger
 from jaxrl.agents.sac.sac_learner import CoTASPLearner
 from jaxrl.agents.sac.sac_mask_combination import MaskCombinationLearner
-from continual_world import TASK_SEQS, get_single_env
+from continual_world import TASK_SEQS, get_single_env, MyHalfcheetah
 import jax.numpy as jnp
 from jax.tree_util import tree_map
 from flax.core import unfreeze, FrozenDict
@@ -128,15 +128,26 @@ def main(_):
     # initialize SAC agent
     algo_kwargs['update_coef'] = False
     algo_kwargs['update_dict'] = False
-    temp_env = get_single_env(
+    temp_env: MyHalfcheetah = get_single_env(
         TASK_SEQS[FLAGS.env_name][0]['task'], FLAGS.seed, 
         randomization=FLAGS.env_type)
     if algo == 'cotasp':
         # agent = CoTASPLearner(
+        temp_observation = jnp.zeros((1, 18)) # allocated by hand
+        temp_action = jnp.zeros((1, 6)) # allocated by hand
+        # agent = MaskCombinationLearner(
+        #     FLAGS.seed,
+        #     temp_env.observation_space.sample()[np.newaxis],
+        #     temp_env.action_space.sample()[np.newaxis], 
+        #     # len(seq_tasks),
+        #     20,
+        #     **algo_kwargs)
         agent = MaskCombinationLearner(
             FLAGS.seed,
-            temp_env.observation_space.sample()[np.newaxis],
-            temp_env.action_space.sample()[np.newaxis], 
+            # temp_env.observation_space.sample()[np.newaxis],
+            temp_observation,
+            # temp_env.action_space.sample()[np.newaxis], 
+            temp_action,
             # len(seq_tasks),
             20,
             **algo_kwargs)
@@ -286,16 +297,27 @@ def main(_):
             normalize_reward=FLAGS.normalize_reward
         )
         # reset replay buffer
+        # replay_buffer = ReplayBuffer(
+        #     env.observation_space, env.action_space, FLAGS.buffer_size or FLAGS.max_step
+        # )
+        # evaluation_buffer = ReplayBuffer(
+        #     env.observation_space, env.action_space, FLAGS.evaluation_batch_size
+        # )
         replay_buffer = ReplayBuffer(
-            env.observation_space, env.action_space, FLAGS.buffer_size or FLAGS.max_step
+            agent.dummy_o, agent.dummy_a, FLAGS.buffer_size or FLAGS.max_step
         )
         evaluation_buffer = ReplayBuffer(
-            env.observation_space, env.action_space, FLAGS.evaluation_batch_size
+            agent.dummy_o, agent.dummy_a, FLAGS.evaluation_batch_size
         )
         # reset scheduler
         schedule = itertools.cycle([False]*FLAGS.theta_step + [True]*FLAGS.alpha_step)
         # reset environment
         observation, done = env.reset(), False
+
+        # >>>>>>>>>>>>>>> action space >>>>>>>>>>>>>>>>>>>>>>>
+        import gym
+        temp_action_space = gym.spaces.Box(-1.0, 1.0, (6,), dtype=np.float32)
+        # <<<<<<<<<<<<<<< action space <<<<<<<<<<<<<<<<<<<<<<<
 
         if FLAGS.use_quick_experiments and task_idx < 4:
             max_steps = FLAGS.first_four_task_max_steps
@@ -306,7 +328,8 @@ def main(_):
             if idx < FLAGS.start_training:
                 # initial exploration strategy proposed in ClonEX-SAC
                 if task_idx == 0:
-                    action = env.action_space.sample()
+                    # action = env.action_space.sample()
+                    action = temp_action_space.sample()
                 else:
                     # uniform-previous strategy
                     mask_id = np.random.choice(task_idx)
@@ -323,12 +346,13 @@ def main(_):
             # counting total environment step
             total_env_steps += 1
 
-            if not done or 'TimeLimit.truncated' in info:
-                mask = 1.0
-            else:
-                mask = 0.0
-            # only for meta-world
-            assert mask == 1.0
+            # if not done or 'TimeLimit.truncated' in info:
+            #     mask = 1.0
+            # else:
+            #     mask = 0.0
+            # # only for meta-world
+            # assert mask == 1.0
+            mask = 1.0
 
             replay_buffer.insert(
                 observation, action, reward, mask, float(done), next_observation
@@ -342,8 +366,8 @@ def main(_):
             if done:
                 # EPISODIC ending
                 observation, done = env.reset(), False
-                for k, v in info['episode'].items():
-                    wandb.log({f'training/{k}': v, 'global_steps': total_env_steps})
+                # for k, v in info['episode'].items():
+                #     wandb.log({f'training/{k}': v, 'global_steps': total_env_steps})
 
             if (idx >= FLAGS.start_training) and (idx % FLAGS.updates_per_step == 0):
                 for _ in range(FLAGS.updates_per_step):
@@ -516,12 +540,14 @@ def get_each_layer_neuron_difference(delta_y, info):
 
 def get_each_layer_reset_indices(neuron_difference, threshold=0.01):
     output = {}
-    for layer_name in ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3', 'mean_layer']:
+    # for layer_name in ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3', 'mean_layer']:
+    for layer_name in ['backbones_0', 'backbones_1', 'backbones_2', 'backbones_3']:
         temp = []
         for i in range(neuron_difference[layer_name].shape[0]):
             if neuron_difference[layer_name][i] < threshold:
                 temp.append(i)
         output[layer_name] = jnp.array(temp)
+    output['mean_layer'] = jnp.array([])
     return output
 
 def get_available_indices(info):

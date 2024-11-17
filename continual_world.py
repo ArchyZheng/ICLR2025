@@ -1,4 +1,5 @@
 # %%
+import jax
 from typing import List
 import random
 import gym
@@ -145,6 +146,10 @@ def get_single_env(
     # >>>>>>>>>>>>>>>> add salina halfcheetah >>>>>>>>>>>>>>>
     elif name in salina_list:
         env: BraxEnv = MyHalfcheetah(env_task=name)
+        env.seed = seed
+        # seed += 1000
+        # env_list.append(env)
+            
         # env.seed(seed)
         return env
     # <<<<<<<<<<<<<<<< add salina halfcheetah <<<<<<<<<<<<<<<
@@ -221,6 +226,9 @@ class MyHalfcheetah(Halfcheetah):
         env_specs = env_tasks[env_task]
         self.obs_mask = jp.concatenate(np.ones((1,OBS_DIM)))
         self.action_mask = jp.concatenate(np.ones((1,ACT_DIM)))
+        self.seed = None
+        self.name = env_task
+        self.step_number = 0
         for spec,coeff in env_specs.items():
             if spec == "gravity":
                 config.gravity.z *= coeff
@@ -241,6 +249,7 @@ class MyHalfcheetah(Halfcheetah):
                         body.mass *= coeff
                         body.colliders[0].capsule.radius *= coeff
         self.sys = brax.System(config)
+        self.step_temp = jax.jit(self.sys.step)
 
     def _get_obs(self, qp, info) -> jp.ndarray:
         """Observe halfcheetah body position and velocities."""
@@ -255,8 +264,11 @@ class MyHalfcheetah(Halfcheetah):
         qvel = [qp.vel[0, (0, 2)], qp.ang[0, 1:2], joint_vel]
         return jp.concatenate(qpos + qvel) * self.obs_mask
 
-    def reset(self, rng: jp.ndarray):
+    def reset(self, rng = None):
         """Resets the environment to an initial state."""
+        # if rng == None:
+        rng = jp.random_prngkey(self.seed)
+        self.seed = self.seed + 1
         rng, rng1, rng2 = jp.random_split(rng, 3)
 
         qpos = self.sys.default_angle() + self._noise(rng1)
@@ -266,6 +278,7 @@ class MyHalfcheetah(Halfcheetah):
         self._qps = [qp]
         obs = self._get_obs(qp, self.sys.info(qp))
         reward, done, zero = jp.zeros(3)
+        self.step_number = 0
         metrics = {
             'x_position': zero,
             'x_velocity': zero,
@@ -273,7 +286,9 @@ class MyHalfcheetah(Halfcheetah):
             'reward_run': zero,
         }
         self.state = _env.State(qp, obs, reward, done, metrics) 
-        return _env.State(qp, obs, reward, done, metrics)
+        return self.state.obs
+    # @jax.jit
+    # def reset_jax(seed):
         
 
     def step(self, action: jp.ndarray, state = None):
@@ -281,7 +296,8 @@ class MyHalfcheetah(Halfcheetah):
         if state == None:
             state = self.state
         action = action * self.action_mask
-        qp, info = self.sys.step(state.qp, action)
+        self.step_number += 1
+        qp, info = self.step_temp(state.qp, action)
         self._qps.append(qp)
 
         velocity = (qp.pos[0] - state.qp.pos[0]) / self.sys.config.dt
@@ -296,7 +312,8 @@ class MyHalfcheetah(Halfcheetah):
             reward_run=forward_reward,
             reward_ctrl=-ctrl_cost)
         self.state = state.replace(qp=qp, obs=obs, reward=reward) 
-        return self.state
+        done = self.step_number == 1000
+        return self.state.obs, self.state.reward, done, ()
 
     def get_qps(self):
         return self._qps
