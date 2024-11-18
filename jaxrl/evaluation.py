@@ -98,7 +98,7 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, current_task_id: 
                 accumulate_return += sum(reward)
                 current_step += 1
                 if current_step >= 1000:
-                    done = [True] * 10
+                    done = [True] * env._env.batch_size
                 # if 'success' in info:
                 #     flag_success += info['success'] 
 
@@ -125,7 +125,7 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, current_task_id: 
         #     stats[f'{task_i}-{env.name}/success_final'] = successes_final / num_episodes
         #     sum_success_final += stats[f'{task_i}-{env.name}/success_final']
 
-        sum_return[f"{task_i}_{env._env.name}"] = accumulate_return / num_episodes
+        sum_return[f"{task_i}_{env._env.name}"] = accumulate_return / env._env.batch_size
 
         # stats[f'{task_i}-{env.name}/check_dummy_action'] = agent.sample_actions(dummy_obs, task_i, temperature=0).mean()
 

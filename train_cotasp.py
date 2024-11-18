@@ -41,9 +41,9 @@ flags.DEFINE_integer('log_interval', 200, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 20000, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updating per # environment steps.')
-flags.DEFINE_integer('buffer_size', int(1e6), 'Size of replay buffer')
-flags.DEFINE_integer('max_step', int(1e5), 'Number of training steps for each task')
-flags.DEFINE_integer('start_training', int(1e3), 'Number of training steps to start training.')
+flags.DEFINE_integer('buffer_size', int(1.28e6), 'Size of replay buffer')
+flags.DEFINE_integer('max_step', int(1e4), 'Number of training steps for each task')
+flags.DEFINE_integer('start_training', int(100), 'Number of training steps to start training.')
 flags.DEFINE_integer('theta_step', int(990), 'Number of training steps for theta.')
 flags.DEFINE_integer('alpha_step', int(10), 'Number of finetune steps for alpha.')
 
@@ -69,7 +69,7 @@ flags.DEFINE_bool('use_input_sensitive', False, 'whether to use input sensitive'
 flags.DEFINE_integer('calculate_layer_sensitivity_interval', int(8e4), 'calculate the layer sensitivity every x steps')
 flags.DEFINE_integer('evaluation_batch_size', int(1e3), "the batch size for evaluation")
 flags.DEFINE_float('layer_neuron_threshold', 0.6, 'the threshold to reset the parameters')
-flags.DEFINE_integer('stop_reset_after_steps', int(6.5e5), 'stop reset once the steps reach this value')
+flags.DEFINE_integer('stop_reset_after_steps', int(6e3), 'stop reset once the steps reach this value')
 
 flags.DEFINE_bool('is_store_everything', False, 'store everything')
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Debug >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -329,7 +329,7 @@ def main(_):
                 # initial exploration strategy proposed in ClonEX-SAC
                 if task_idx == 0:
                     # Parallel sample actions
-                    action = np.array([temp_action_space.sample() for _ in range(10)])
+                    action = np.array([temp_action_space.sample() for _ in range(env._env.batch_size)])
                 else:
                     # uniform-previous strategy
                     mask_id = np.random.choice(task_idx)
@@ -381,7 +381,8 @@ def main(_):
 
             if (idx >= FLAGS.start_training) and (idx % FLAGS.updates_per_step == 0):
                 # for _ in range(FLAGS.updates_per_step):
-                for _ in range(10):
+                for _ in range(env._env.batch_size):
+                # for _ in range(2):
                     batch = replay_buffer.sample(FLAGS.batch_size)
                     update_info = agent.update(task_idx, batch, next(schedule))
                 if idx % FLAGS.log_interval == 0:

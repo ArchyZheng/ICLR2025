@@ -43,10 +43,10 @@ TASK_SEQS = {
         {'task': "tinyfoot_moon", 'hint': 'halfcheetah is in a rainfall environment'},
     ],
     "salina/halfcheetah/robustness": [
-        {'task': "normal", 'hint': 'halfcheetah with hugefoot'},
-        {'task': "inverted_actions", 'hint': 'halfcheetah in a small gravity environment'},
-        {'task': "normal", 'hint': 'halfcheetah is carrying some stuff'},
-        {'task': "inverted_actions", 'hint': 'halfcheetah is in a rainfall environment'},
+        {'task': "inverted_actions", 'hint': 'the action of halfcheetah is inversed'},
+        {'task': "normal", 'hint': 'the normal halfcheetah'},
+        {'task': "normal", 'hint': 'the normal halfcheetah'},
+        {'task': "inverted_actions", 'hint': 'the aciton of halfcheetah is inversed'},
     ],
     "cw10": [
         {'task': "hammer-v1", 'hint': 'Hammer a screw on the wall.'},
@@ -170,7 +170,7 @@ def get_single_env(
         env: BraxEnv = Halfcheetah(env_task=name)
         env.seed = seed
         # env.batch_size = 10
-        env = VectorWrapper(env, batch_size=10)
+        env = VectorWrapper(env, batch_size=128)
         env = GymWrapper(env, seed)
         # env = gym.vector.SyncVectorEnv([lambda: env for _ in range(10)])
 
