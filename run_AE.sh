@@ -11,6 +11,18 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
     --reset_log_std \
     --dormant_type sensitivity \
     --layer_neuron_threshold 0.6 \
-    --env_name salina/halfcheetah/forgetting \
-    --eval_interval 200000 \
-    --calculate_layer_sensitivity_interval 80000 \
+    --env_name salina/halfcheetah/robustness \
+    --eval_interval 20000 \
+    --calculate_layer_sensitivity_interval 8000 \
+
+
+        # --seed 110",
+        # --wandb_project_name", "rebuttal_results",
+        # --env_name", "salina/halfcheetah/forgetting",
+        # --default_beta", "0.3",
+        # --is_store_everything",
+        # --use_input_sensitive",
+        # --reset_log_std",
+        # --dormant_type", "sensitivity",
+        # --eval_interval", "20000",
+        # --calculate_layer_sensitivity_interval", "1000",

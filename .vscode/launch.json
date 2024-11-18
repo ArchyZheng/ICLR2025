@@ -31,10 +31,11 @@
             "--use_input_sensitive",
             "--reset_log_std",
             "--dormant_type", "sensitivity",
-            "--eval_interval", "200000",
-            "--calculate_layer_sensitivity_interval", "10000",
+            "--eval_interval", "20000",
+            "--calculate_layer_sensitivity_interval", "1000",
         ],
         "console": "integratedTerminal",
+        "justMyCode": false,
         "env": {
             "CUDA_VISIBLE_DEVICES": "0",
             "WANDB_API_KEY": "d3be0188f8e6de441fe26438708884794c8db33f",

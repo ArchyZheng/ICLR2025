@@ -42,8 +42,8 @@ flags.DEFINE_integer('eval_interval', 20000, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('updates_per_step', 1, 'Gradient updating per # environment steps.')
 flags.DEFINE_integer('buffer_size', int(1e6), 'Size of replay buffer')
-flags.DEFINE_integer('max_step', int(1e6), 'Number of training steps for each task')
-flags.DEFINE_integer('start_training', int(1e4), 'Number of training steps to start training.')
+flags.DEFINE_integer('max_step', int(1e5), 'Number of training steps for each task')
+flags.DEFINE_integer('start_training', int(1e3), 'Number of training steps to start training.')
 flags.DEFINE_integer('theta_step', int(990), 'Number of training steps for theta.')
 flags.DEFINE_integer('alpha_step', int(10), 'Number of finetune steps for alpha.')
 
@@ -328,19 +328,19 @@ def main(_):
             if idx < FLAGS.start_training:
                 # initial exploration strategy proposed in ClonEX-SAC
                 if task_idx == 0:
-                    # action = env.action_space.sample()
-                    action = temp_action_space.sample()
+                    # Parallel sample actions
+                    action = np.array([temp_action_space.sample() for _ in range(10)])
                 else:
                     # uniform-previous strategy
                     mask_id = np.random.choice(task_idx)
-                    action = agent.sample_actions(observation[np.newaxis], mask_id)
-                    action = np.asarray(action, dtype=np.float32).flatten()
+                    action = agent.sample_actions(observation, mask_id)
+                    # action = np.asarray(action, dtype=np.float32).flatten()
                 
                 # default initial exploration strategy
                 # action = env.action_space.sample()
             else:
-                action = agent.sample_actions(observation[np.newaxis], task_idx)
-                action = np.asarray(action, dtype=np.float32).flatten()
+                action = agent.sample_actions(observation, task_idx)
+                # action = np.asarray(action, dtype=np.float32).flatten()
                 
             next_observation, reward, done, info = env.step(action)
             # counting total environment step
@@ -354,23 +354,34 @@ def main(_):
             # assert mask == 1.0
             mask = 1.0
 
-            replay_buffer.insert(
-                observation, action, reward, mask, float(done), next_observation
-            )
-            evaluation_buffer.insert(
-                observation, action, reward, mask, float(done), next_observation
-            )
+            for obs, act, rew, do, next_obs in zip(observation, action, reward, done, next_observation):
+                # print(obs, act, rew, do, next_obs)
+                # break
+                replay_buffer.insert(
+                    obs, act, rew, mask, float(do), next_obs
+                )
+                evaluation_buffer.insert(
+                    obs, act, rew, mask, float(do), next_obs
+                )
+
+            # replay_buffer.insert(
+            #     observation, action, reward, mask, float(done), next_observation
+            # )
+            # evaluation_buffer.insert(
+            #     observation, action, reward, mask, float(done), next_observation
+            # )
             # CRUCIAL step easy to overlook
             observation = next_observation
 
-            if done:
+            if any(done) or idx % 1000 == 0 and idx > 0:
                 # EPISODIC ending
                 observation, done = env.reset(), False
                 # for k, v in info['episode'].items():
                 #     wandb.log({f'training/{k}': v, 'global_steps': total_env_steps})
 
             if (idx >= FLAGS.start_training) and (idx % FLAGS.updates_per_step == 0):
-                for _ in range(FLAGS.updates_per_step):
+                # for _ in range(FLAGS.updates_per_step):
+                for _ in range(10):
                     batch = replay_buffer.sample(FLAGS.batch_size)
                     update_info = agent.update(task_idx, batch, next(schedule))
                 if idx % FLAGS.log_interval == 0:

@@ -70,7 +70,7 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, current_task_id: 
         agent = change_overlap_param_mask(agent, overlap_param, task_i, outside_task_id=current_task_id, beta_dict=beta_dict, multi_head=multi_head)
             
         for k in list_log_keys:
-            stats[f'{task_i}-{env.name}/{k}'] = []
+            stats[f'{task_i}-{env._env.name}/{k}'] = []
         successes = None
         successes_final = None # if the task is success in the episode it will record as one
 
@@ -78,26 +78,27 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, current_task_id: 
             agent.select_actor(task_i)
 
         accumulate_return = 0
-        for _ in range(num_episodes):
-            observation, done = env.reset(), False
+        # for _ in range(num_episodes):
+        print(f"current task id: {task_i}")
+        for _ in range(1):
+            observation, done = env.reset(), [False]
             flag_success = 0
             current_step = 0
-            while not done:
+            while not any(done):
                 # print(current_step)
-                # current_step += 1
                 
                 if naive_sac:
-                    action = agent.sample_actions(observation[np.newaxis], temperature=0)
-                    action = np.asarray(action, dtype=np.float32).flatten()
+                    action = agent.sample_actions(observation, temperature=0)
                 elif tadell:
-                    action = agent.sample_actions(observation[np.newaxis], temperature=0, eval_mode=True)
-                    action = np.asarray(action, dtype=np.float32).flatten()
+                    action = agent.sample_actions(observation, temperature=0, eval_mode=True)
                 else:
-                    action = agent.sample_actions(observation[np.newaxis], task_i, temperature=0)
-                    action = np.asarray(action, dtype=np.float32).flatten()
+                    action = agent.sample_actions(observation, task_i, temperature=0)
 
                 observation, reward, done, info = env.step(action)
-                accumulate_return += reward
+                accumulate_return += sum(reward)
+                current_step += 1
+                if current_step >= 1000:
+                    done = [True] * 10
                 # if 'success' in info:
                 #     flag_success += info['success'] 
 
@@ -124,7 +125,7 @@ def evaluate_cl(agent, envs: List[gym.Env], num_episodes: int, current_task_id: 
         #     stats[f'{task_i}-{env.name}/success_final'] = successes_final / num_episodes
         #     sum_success_final += stats[f'{task_i}-{env.name}/success_final']
 
-        sum_return[f"{task_i}_{env.name}"] = accumulate_return / num_episodes
+        sum_return[f"{task_i}_{env._env.name}"] = accumulate_return / num_episodes
 
         # stats[f'{task_i}-{env.name}/check_dummy_action'] = agent.sample_actions(dummy_obs, task_i, temperature=0).mean()
 
