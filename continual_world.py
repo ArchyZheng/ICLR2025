@@ -37,14 +37,14 @@ TASK_SEQS = {
         {'task': "hugefoot_rainfall", 'hint': 'halfcheetah is in a rainfall environment'},
     ],
     "salina/halfcheetah/compositionality": [
-        {'task': "tinyfoot", 'hint': 'halfcheetah with hugefoot'},
+        {'task': "tinyfoot", 'hint': 'halfcheetah with a tiny foot'},
         {'task': "moon", 'hint': 'halfcheetah in a small gravity environment'},
         {'task': "carry_stuff_hugegravity", 'hint': 'halfcheetah is carrying some stuff'},
-        {'task': "tinyfoot_moon", 'hint': 'halfcheetah is in a rainfall environment'},
+        {'task': "tinyfoot_moon", 'hint': 'halfcheetah with a tiny foot and in a small gravity environment'},
     ],
     "salina/halfcheetah/robustness": [
-        {'task': "inverted_actions", 'hint': 'the action of halfcheetah is inversed'},
         {'task': "normal", 'hint': 'the normal halfcheetah'},
+        {'task': "inverted_actions", 'hint': 'the action of halfcheetah is inversed'},
         {'task': "normal", 'hint': 'the normal halfcheetah'},
         {'task': "inverted_actions", 'hint': 'the aciton of halfcheetah is inversed'},
     ],

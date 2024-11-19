@@ -17,7 +17,8 @@ def evaluate(agent, env: gym.Env, num_episodes: int, with_task_embed=False, task
                 if task_i is None:
                     action = agent.sample_actions(observation[np.newaxis], temperature=0.0)
                 else:
-                    action = agent.sample_actions(observation[np.newaxis], task_i, temperature=0.0)
+                    # action = agent.sample_actions(observation[np.newaxis], task_i, temperature=0.0)
+                    action = agent.sample_actions(observation[np.newaxis], task_i)
             observation, _, done, info = env.step(action)
         for k in stats.keys():
             stats[k].append(info['episode'][k])
